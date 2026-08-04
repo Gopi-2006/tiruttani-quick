@@ -1,0 +1,120 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userId() {
+      return request.auth.uid;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUserData().role == 'Admin';
+    }
+
+    function isDeliveryAgent() {
+      return isSignedIn() && getUserData().role == 'Delivery Agent';
+    }
+
+    // Helper to identify firebase owner based on email pattern (matches AuthRepository)
+    function isFirebaseOwner(auth) {
+      return auth != null && 
+             auth.token != null && 
+             auth.token.email != null && 
+             (auth.token.email.toLowerCase().matches('.*gopim.*') || 
+              auth.token.email.toLowerCase().matches('.*admin.*'));
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (userId == userId() || isAdmin());
+      
+      // On creation, non-owners must be 'Customer', owners can bootstrap to 'Admin'
+      allow create: if isSignedIn() && userId == userId() && (
+        request.resource.data.role == 'Customer' ||
+        (request.resource.data.role == 'Admin' && isFirebaseOwner(request.auth))
+      );
+      
+      // On update, users can't change their role unless they are an admin
+      allow update: if isSignedIn() && (
+        (userId == userId() && request.resource.data.role == resource.data.role) || 
+        isAdmin()
+      );
+      
+      allow delete: if isAdmin();
+    }
+
+    match /addresses/{addressId} {
+      allow read: if isSignedIn() && resource.data.userId == userId();
+      allow create: if isSignedIn() && request.resource.data.userId == userId();
+      allow update: if isSignedIn() && resource.data.userId == userId();
+      allow delete: if isSignedIn() && resource.data.userId == userId();
+    }
+
+    match /cart_items/{cartItemId} {
+      allow read: if isSignedIn() && resource.data.userId == userId();
+      allow create: if isSignedIn() && request.resource.data.userId == userId();
+      allow update: if isSignedIn() && resource.data.userId == userId();
+      allow delete: if isSignedIn() && resource.data.userId == userId();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && (resource.data.customerId == userId() || isAdmin() || isDeliveryAgent());
+      allow create: if isSignedIn() && request.resource.data.customerId == userId();
+      allow update: if isSignedIn() && (isAdmin() || isDeliveryAgent());
+      allow delete: if false;
+
+      match /order_items/{itemId} {
+        allow read: if isSignedIn() && (
+          get(/databases/$(database)/documents/orders/$(orderId)).data.customerId == userId() || 
+          isAdmin() || 
+          isDeliveryAgent()
+        );
+        allow write: if isSignedIn() && (
+          get(/databases/$(database)/documents/orders/$(orderId)).data.customerId == userId() || 
+          isAdmin()
+        );
+      }
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /promotions/{promotionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.userId == userId();
+      // Customers can create their own notifications; admins can create notifications for any user (e.g., order status updates)
+      allow create: if isSignedIn() && (request.resource.data.userId == userId() || isAdmin());
+      allow update: if isSignedIn() && resource.data.userId == userId();
+      allow delete: if isSignedIn() && resource.data.userId == userId();
+    }
+
+    match /otp_codes/{otpId} {
+      allow read: if isSignedIn() && otpId == userId();
+      allow create: if isSignedIn() && otpId == userId();
+      allow update: if isSignedIn() && otpId == userId();
+      allow delete: if isSignedIn() && otpId == userId();
+    }
+
+    match /delivery_agents/{agentId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

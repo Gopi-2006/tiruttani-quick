@@ -1,0 +1,30 @@
+class ButtonTexts {
+  static const login = 'Login';
+  static const signUp = 'Sign Up';
+  static const createAccount = 'Create account';
+  static const verifyOtp = 'Verify OTP';
+  static const resend = 'Resend';
+  static const skipForDemo = 'Skip for demo';
+  static const add = 'Add';
+  static const proceedToCheckout = 'Proceed to Checkout';
+  static const placeOrder = 'Place Order';
+  static const forgotPassword = 'Forgot password?';
+  static const continueWithGoogle = 'Continue with Google';
+  static const assignAgent = 'Assign delivery agent';
+  static const verifyHandover = 'Verify & Handover';
+  static const cancel = 'Cancel';
+  static const save = 'Save';
+  static const delete = 'Delete';
+  static const edit = 'Edit';
+  static const ok = 'OK';
+  static const logout = 'Logout';
+  static const map = 'Map';
+  static const call = 'Call';
+  static const offline = 'Offline';
+  static const accept = 'Accept';
+  static const pickedUp = 'Picked Up';
+  static const onTheWay = 'On the Way';
+  static const delivered = 'Delivered';
+  static const change = 'Change';
+  static const update = 'Update';
+}

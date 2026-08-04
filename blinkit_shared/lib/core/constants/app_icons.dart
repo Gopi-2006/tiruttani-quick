@@ -1,0 +1,43 @@
+import 'package:flutter/material.dart';
+
+class AppIcons {
+  static const IconData shoppingBag = Icons.shopping_bag;
+  static const IconData phone = Icons.phone;
+  static const IconData lock = Icons.lock;
+  static const IconData login = Icons.login;
+  static const IconData person = Icons.person;
+  static const IconData email = Icons.email;
+  static const IconData sms = Icons.sms;
+  static const IconData location = Icons.location_on;
+  static const IconData admin = Icons.admin_panel_settings;
+  static const IconData deliveryAgent = Icons.delivery_dining;
+  static const IconData search = Icons.search;
+  static const IconData mic = Icons.mic;
+  static const IconData shoppingCart = Icons.shopping_cart;
+  static const IconData shoppingCartOutlined = Icons.shopping_cart_outlined;
+  static const IconData orders = Icons.receipt_long;
+  static const IconData ordersOutlined = Icons.receipt_long_outlined;
+  static const IconData home = Icons.home;
+  static const IconData homeOutlined = Icons.home_outlined;
+  static const IconData eco = Icons.eco;
+  static const IconData remove = Icons.remove_circle_outline;
+  static const IconData add = Icons.add_circle_outline;
+  static const IconData addSimple = Icons.add;
+  static const IconData star = Icons.star;
+  static const IconData myLocation = Icons.my_location;
+  static const IconData place = Icons.place;
+  static const IconData pin = Icons.pin;
+  static const IconData arrowForward = Icons.arrow_forward_ios;
+  static const IconData arrowBack = Icons.arrow_back;
+  static const IconData map = Icons.map;
+  static const IconData call = Icons.call;
+  static const IconData vpnKey = Icons.vpn_key;
+  static const IconData check = Icons.check;
+  static const IconData circleOutlined = Icons.circle_outlined;
+  static const IconData logout = Icons.logout;
+  static const IconData visibility = Icons.visibility;
+  static const IconData visibilityOff = Icons.visibility_off;
+  static const IconData edit = Icons.edit;
+  static const IconData delete = Icons.delete;
+  static const IconData inbox = Icons.inbox_outlined;
+}
