@@ -14,7 +14,7 @@ You'll be prompted for:
 - Key alias password (can be same)
 - Your name, org, city, country
 
-### Step 2: Create key.properties in blinkit_customer/android/ and blinkit_admin/android/
+### Step 2: Create key.properties in Tiruttaniquick_customer/android/ and Tiruttaniquick_admin/android/
 (A template file is already placed there for you — fill it in)
 
 ### Step 3: Build the release AAB
