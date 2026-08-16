@@ -69,7 +69,7 @@ class FirestoreService {
     bool includeInactive = false,
     int limit = 100,
   }) {
-    final normalizedQuery = searchQuery?.trim().toLowerCase() ?? '';
+    final normalizedQuery = searchQuery?.trim() ?? '';
 
     Query<Map<String, dynamic>> query = _db.collection('products');
     if (!includeInactive) {
@@ -85,14 +85,16 @@ class FirestoreService {
         .map((snapshot) {
       final products = snapshot.docs
           .map((doc) => ProductModel.fromFirestore(doc.id, doc.data()))
-          .where((product) {
-            if (normalizedQuery.isEmpty) return true;
-            return product.name.toLowerCase().contains(normalizedQuery);
-          })
           .toList();
 
-      products.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-      return products;
+      final filtered = ProductSearchEngine.filterProducts(
+        products: products,
+        rawQuery: normalizedQuery,
+      );
+
+      final resultList = List<ProductModel>.from(filtered);
+      resultList.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      return resultList;
     });
   }
 

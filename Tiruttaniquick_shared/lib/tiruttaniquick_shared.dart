@@ -41,6 +41,7 @@ export 'services/secure_storage_service.dart';
 export 'services/notification_service.dart';
 export 'services/connectivity_provider.dart';
 export 'services/offer_engine.dart';
+export 'services/product_search_engine.dart';
 
 // Widgets
 export 'widgets/category_card.dart';

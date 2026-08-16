@@ -82,6 +82,151 @@ void main() {
     });
   });
 
+  group('ProductSearchEngine Tests', () {
+    final sampleProducts = [
+      const ProductModel(
+        id: 'p1',
+        name: 'VIM DRP DISHWASH GEL',
+        nameTamil: 'விம் டிஷ்வாஷ்',
+        imageUrl: 'https://example.com/vim.png',
+        price: 55.0,
+        categoryId: 'cat_cleaning',
+        unit: '250 ml',
+        stockQuantity: 10,
+        lowStockThreshold: 2,
+        isActive: true,
+        sortOrder: 1,
+        brand: 'Vim',
+        description: 'Lemon power dishwash gel',
+        tags: ['dishwash', 'cleaning', 'gel'],
+        searchKeywords: ['bar', 'soap', 'cleaner'],
+      ),
+      const ProductModel(
+        id: 'p2',
+        name: 'Urad Dal',
+        nameTamil: 'உளுந்தம் பருப்பு',
+        imageUrl: 'https://example.com/urad.png',
+        price: 120.0,
+        categoryId: 'cat_pulses',
+        unit: '1 kg',
+        stockQuantity: 20,
+        lowStockThreshold: 5,
+        isActive: true,
+        sortOrder: 2,
+        brand: 'Tata Sampann',
+        tags: ['dal', 'pulses', 'staples'],
+      ),
+      const ProductModel(
+        id: 'p3',
+        name: 'Fresh Cow Milk',
+        nameTamil: 'பசு பால்',
+        imageUrl: 'https://example.com/milk.png',
+        price: 30.0,
+        categoryId: 'cat_dairy',
+        unit: '500 ml',
+        stockQuantity: 15,
+        lowStockThreshold: 3,
+        isActive: true,
+        sortOrder: 3,
+        brand: 'Amul',
+        tags: ['dairy', 'milk'],
+      ),
+    ];
+
+    final sampleCategories = [
+      const CategoryModel(
+        id: 'cat_cleaning',
+        name: 'Cleaning & Household',
+        imageUrl: '',
+        color: '#000',
+        sortOrder: 1,
+      ),
+      const CategoryModel(
+        id: 'cat_pulses',
+        name: 'Pulses & Rice',
+        imageUrl: '',
+        color: '#000',
+        sortOrder: 2,
+      ),
+      const CategoryModel(
+        id: 'cat_dairy',
+        name: 'Dairy & Bakery',
+        imageUrl: '',
+        color: '#000',
+        sortOrder: 3,
+      ),
+    ];
+
+    test('Partial English name match "vim" finds VIM DRP DISHWASH GEL', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'vim',
+        categories: sampleCategories,
+      );
+      expect(results.length, 1);
+      expect(results.first.id, 'p1');
+    });
+
+    test('Partial name match "urad" finds Urad Dal', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'urad',
+        categories: sampleCategories,
+      );
+      expect(results.length, 1);
+      expect(results.first.id, 'p2');
+    });
+
+    test('Brand search "amul" finds Fresh Cow Milk', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'amul',
+        categories: sampleCategories,
+      );
+      expect(results.length, 1);
+      expect(results.first.id, 'p3');
+    });
+
+    test('Tamil name search "உளுந்தம்" finds Urad Dal', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'உளுந்தம்',
+        categories: sampleCategories,
+      );
+      expect(results.length, 1);
+      expect(results.first.id, 'p2');
+    });
+
+    test('Category term search "cleaning" matches products in Cleaning category', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'cleaning',
+        categories: sampleCategories,
+      );
+      expect(results.length, 1);
+      expect(results.first.id, 'p1');
+    });
+
+    test('Multi-token search "vim gel" matches VIM DRP DISHWASH GEL', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'vim gel',
+        categories: sampleCategories,
+      );
+      expect(results.length, 1);
+      expect(results.first.id, 'p1');
+    });
+
+    test('Empty query returns unmodifiable copy of all products', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: '  ',
+        categories: sampleCategories,
+      );
+      expect(results.length, 3);
+    });
+  });
+
   group('ProductModel Tests', () {
     test('ProductModel.fromFirestore parses correct fields (standard map)', () {
       final data = {

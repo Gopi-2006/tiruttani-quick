@@ -355,15 +355,24 @@ class _HomeBodyState extends State<_HomeBody> {
           : RefreshIndicator(
               onRefresh: _refreshHomeData,
               child: searchProvider.query.isNotEmpty
-                  ? StreamBuilder<List<ProductModel>>(
-                      stream: _firestore.productsStream(searchQuery: searchProvider.query),
-                      builder: (context, snapshot) {
-                        final products = snapshot.data ?? [];
-                        final loadingProducts = snapshot.connectionState == ConnectionState.waiting;
-                        return _buildHomeContent(context, loadingProducts, products, isSearch: true, categories: startup.categories);
-                      },
+                  ? _buildHomeContent(
+                      context,
+                      false,
+                      ProductSearchEngine.filterProducts(
+                        products: startup.products,
+                        rawQuery: searchProvider.query,
+                        categories: startup.categories,
+                      ),
+                      isSearch: true,
+                      categories: startup.categories,
                     )
-                  : _buildHomeContent(context, false, startup.products, isSearch: false, categories: startup.categories),
+                  : _buildHomeContent(
+                      context,
+                      false,
+                      startup.products,
+                      isSearch: false,
+                      categories: startup.categories,
+                    ),
             ),
       bottomNavigationBar: BannerAdWidget(adUnitId: AdMobConfig.homeBannerId),
     );

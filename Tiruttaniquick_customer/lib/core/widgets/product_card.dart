@@ -94,28 +94,39 @@ class ProductCard extends StatelessWidget {
             Expanded(
               child: Stack(
                 children: [
-                  CachedNetworkImage(
-                    imageUrl: displayImage,
-                    fit: BoxFit.contain,
-                    width: double.infinity,
-                    height: double.infinity,
-                    maxWidthDiskCache: 250,
-                    maxHeightDiskCache: 250,
-                    placeholder: (context, url) => const SkeletonBox(
-                      width: double.infinity,
-                      height: double.infinity,
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      color: Colors.grey.shade50,
-                      child: Center(
-                        child: Icon(
-                          Icons.image_not_supported_outlined,
-                          size: 40,
-                          color: Colors.grey.shade400,
+                  (displayImage.trim().startsWith('http://') || displayImage.trim().startsWith('https://'))
+                      ? CachedNetworkImage(
+                          imageUrl: displayImage.trim(),
+                          fit: BoxFit.contain,
+                          width: double.infinity,
+                          height: double.infinity,
+                          maxWidthDiskCache: 250,
+                          maxHeightDiskCache: 250,
+                          placeholder: (context, url) => const SkeletonBox(
+                            width: double.infinity,
+                            height: double.infinity,
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: Colors.grey.shade50,
+                            child: Center(
+                              child: Icon(
+                                Icons.image_not_supported_outlined,
+                                size: 40,
+                                color: Colors.grey.shade400,
+                              ),
+                            ),
+                          ),
+                        )
+                      : Container(
+                          color: Colors.grey.shade50,
+                          child: Center(
+                            child: Icon(
+                              Icons.image_not_supported_outlined,
+                              size: 40,
+                              color: Colors.grey.shade400,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
                   // Discount badge
                   if (discountPct > 0)
                     Positioned(
