@@ -1,7 +1,7 @@
 ## key.properties — FILL IN BEFORE BUILDING RELEASE
 ## ⚠️ Never commit this file to git. It is already in .gitignore.
 
-storePassword=ThiruttaniKey2024
-keyPassword=ThiruttaniKey2024
+storePassword=YOUR_KEYSTORE_PASSWORD_HERE
+keyPassword=YOUR_KEY_PASSWORD_HERE
 keyAlias=upload
 storeFile=release-keystore.jks

@@ -11,6 +11,7 @@ import '../models/banner_model.dart';
 import '../models/offer_model.dart';
 import '../models/flash_sale_model.dart';
 import '../models/coupon_model.dart';
+import 'product_search_engine.dart';
 
 class FirestoreService {
   FirebaseFirestore get _db => FirebaseFirestore.instance;
@@ -32,35 +33,29 @@ class FirestoreService {
         .orderBy('sortOrder')
         .snapshots()
         .map((snapshot) {
-      final list = <CategoryModel>[];
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final rawIcon = data['icon'] as String?;
-        final hasImageUrl = data.containsKey('imageUrl');
-        final isIconUrl = rawIcon != null &&
-            (rawIcon.startsWith('http://') || rawIcon.startsWith('https://'));
-
-        if (!hasImageUrl || isIconUrl) {
-          final migratedUrl = data['imageUrl'] as String? ??
-              data['categoryImage'] as String? ??
-              (isIconUrl ? rawIcon : '');
-
-          final updates = <String, dynamic>{
-            'imageUrl': migratedUrl,
-            'categoryImage': migratedUrl,
-          };
-          if (isIconUrl) {
-            updates['icon'] = FieldValue.delete();
-          }
-
-          doc.reference.update(updates).catchError((_) {
-            // Ignore offline/permission update errors during stream read
-          });
-        }
-        list.add(CategoryModel.fromFirestore(doc.id, data));
-      }
-      return list;
+      return snapshot.docs
+          .map((doc) => CategoryModel.fromFirestore(doc.id, doc.data()))
+          .toList();
     });
+  }
+
+  /// Fetches product list once without real-time stream subscription.
+  Future<List<ProductModel>> fetchProducts({
+    bool includeInactive = false,
+    int limit = 200,
+  }) async {
+    Query<Map<String, dynamic>> query = _db.collection('products');
+    if (!includeInactive) {
+      query = query.where('isActive', isEqualTo: true);
+    }
+
+    final snapshot = await query.limit(limit).get();
+    final products = snapshot.docs
+        .map((doc) => ProductModel.fromFirestore(doc.id, doc.data()))
+        .toList();
+
+    products.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return products;
   }
 
   Stream<List<ProductModel>> productsStream({

@@ -20,7 +20,7 @@ class CustomButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(AppDimensions.borderRadiusNormal),
+      borderRadius: BorderRadius.circular(AppDimensions.buttonRadiusPill),
     );
 
     if (outline) {
@@ -31,23 +31,37 @@ class CustomButton extends StatelessWidget {
               ? const SizedBox(
                   height: AppDimensions.iconSizeSmall,
                   width: AppDimensions.iconSizeSmall,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
                 )
-              : Icon(icon),
-          label: Text(text),
-          style: OutlinedButton.styleFrom(shape: shape),
+              : Icon(icon, size: 18),
+          label: Text(
+            text,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: AppDimensions.fontSizeNormal),
+          ),
+          style: OutlinedButton.styleFrom(
+            shape: shape,
+            side: const BorderSide(color: AppColors.primary, width: 1.5),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          ),
         );
       }
       return OutlinedButton(
         onPressed: loading ? null : onPressed,
-        style: OutlinedButton.styleFrom(shape: shape),
+        style: OutlinedButton.styleFrom(
+          shape: shape,
+          side: const BorderSide(color: AppColors.primary, width: 1.5),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        ),
         child: loading
             ? const SizedBox(
                 height: AppDimensions.iconSizeSmall,
                 width: AppDimensions.iconSizeSmall,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
               )
-            : Text(text),
+            : Text(
+                text,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: AppDimensions.fontSizeNormal),
+              ),
       );
     }
 
@@ -60,22 +74,40 @@ class CustomButton extends StatelessWidget {
                 width: AppDimensions.iconSizeSmall,
                 child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.white),
               )
-            : Icon(icon),
-        label: Text(text),
-        style: ElevatedButton.styleFrom(shape: shape),
+            : Icon(icon, size: 18),
+        label: Text(
+          text,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: AppDimensions.fontSizeNormal, color: AppColors.white),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: AppColors.white,
+          elevation: 0,
+          shape: shape,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        ),
       );
     }
 
     return ElevatedButton(
       onPressed: loading ? null : onPressed,
-      style: ElevatedButton.styleFrom(shape: shape),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.primary,
+        foregroundColor: AppColors.white,
+        elevation: 0,
+        shape: shape,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      ),
       child: loading
           ? const SizedBox(
               height: AppDimensions.iconSizeSmall,
               width: AppDimensions.iconSizeSmall,
               child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.white),
             )
-          : Text(text),
+          : Text(
+              text,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: AppDimensions.fontSizeNormal, color: AppColors.white),
+            ),
     );
   }
 }

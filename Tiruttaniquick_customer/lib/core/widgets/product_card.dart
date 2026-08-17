@@ -18,11 +18,19 @@ class ProductCard extends StatelessWidget {
   /// If provided, this specific variant is locked/pre-selected.
   /// Leave null to let the card pick the cheapest available variant automatically.
   final ProductVariantModel? variant;
+  /// If true, renders the dark #1A1A1A surface card variant (featured/grid listings).
+  final bool isDark;
 
-  const ProductCard({super.key, required this.product, this.variant});
+  const ProductCard({
+    super.key,
+    required this.product,
+    this.variant,
+    this.isDark = false,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = isDark || Theme.of(context).brightness == Brightness.dark;
     final cartProvider = context.watch<CartProvider>();
     final currentUser = context.read<CurrentUserProvider>();
     final startup = context.watch<StartupProvider>();
@@ -73,12 +81,15 @@ class ProductCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        color: isDarkMode ? AppColors.darkSurface : AppColors.card,
+        borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
+        border: Border.all(
+          color: isDarkMode ? AppColors.darkBorder : AppColors.border,
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withValues(alpha: isDarkMode ? 0.20 : 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -94,39 +105,44 @@ class ProductCard extends StatelessWidget {
             Expanded(
               child: Stack(
                 children: [
-                  (displayImage.trim().startsWith('http://') || displayImage.trim().startsWith('https://'))
-                      ? CachedNetworkImage(
-                          imageUrl: displayImage.trim(),
-                          fit: BoxFit.contain,
-                          width: double.infinity,
-                          height: double.infinity,
-                          maxWidthDiskCache: 250,
-                          maxHeightDiskCache: 250,
-                          placeholder: (context, url) => const SkeletonBox(
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(AppDimensions.cardRadius),
+                    ),
+                    child: (displayImage.trim().startsWith('http://') || displayImage.trim().startsWith('https://'))
+                        ? CachedNetworkImage(
+                            imageUrl: displayImage.trim(),
+                            fit: BoxFit.contain,
                             width: double.infinity,
                             height: double.infinity,
-                          ),
-                          errorWidget: (context, url, error) => Container(
-                            color: Colors.grey.shade50,
+                            maxWidthDiskCache: 250,
+                            maxHeightDiskCache: 250,
+                            placeholder: (context, url) => const SkeletonBox(
+                              width: double.infinity,
+                              height: double.infinity,
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              color: isDarkMode ? const Color(0xFF222222) : Colors.grey.shade50,
+                              child: Center(
+                                child: Icon(
+                                  Icons.image_not_supported_outlined,
+                                  size: 36,
+                                  color: isDarkMode ? AppColors.darkMuted : Colors.grey.shade400,
+                                ),
+                              ),
+                            ),
+                          )
+                        : Container(
+                            color: isDarkMode ? const Color(0xFF222222) : Colors.grey.shade50,
                             child: Center(
                               child: Icon(
                                 Icons.image_not_supported_outlined,
-                                size: 40,
-                                color: Colors.grey.shade400,
+                                size: 36,
+                                color: isDarkMode ? AppColors.darkMuted : Colors.grey.shade400,
                               ),
                             ),
                           ),
-                        )
-                      : Container(
-                          color: Colors.grey.shade50,
-                          child: Center(
-                            child: Icon(
-                              Icons.image_not_supported_outlined,
-                              size: 40,
-                              color: Colors.grey.shade400,
-                            ),
-                          ),
-                        ),
+                  ),
                   // Discount badge
                   if (discountPct > 0)
                     Positioned(
@@ -225,18 +241,22 @@ class ProductCard extends StatelessWidget {
                     decoratedProduct.getLocalizedName(context.watch<SettingsProvider>().languageCode),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
                       fontSize: 13,
-                      color: AppColors.text,
+                      color: isDarkMode ? AppColors.white : AppColors.textPrimary,
                     ),
                   ),
+                  const SizedBox(height: 2),
                   // Unit / size sub-label
                   Text(
                     isVariant ? activeVariant.name : decoratedProduct.unit,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppColors.muted, fontSize: 11),
+                    style: TextStyle(
+                      color: isDarkMode ? AppColors.darkMuted : AppColors.textSecondary,
+                      fontSize: 11,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   // Price and Countdown row (responsive wrap)
@@ -251,10 +271,10 @@ class ProductCard extends StatelessWidget {
                         children: [
                           // "Starting from" prefix when multiple variants exist
                           if (hasMultipleVariants)
-                            const Text(
+                            Text(
                               'From ',
                               style: TextStyle(
-                                color: AppColors.muted,
+                                color: isDarkMode ? AppColors.darkMuted : AppColors.textSecondary,
                                 fontSize: 11,
                               ),
                             ),
@@ -262,17 +282,17 @@ class ProductCard extends StatelessWidget {
                             '₹${displayPrice.toStringAsFixed(0)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              color: AppColors.text,
+                              fontSize: 15,
+                              color: AppColors.primary, // Amber price tag
                             ),
                           ),
                           const SizedBox(width: 4),
                           if (mrpVal > displayPrice)
                             Text(
                               '₹${mrpVal.toStringAsFixed(0)}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 decoration: TextDecoration.lineThrough,
-                                color: AppColors.muted,
+                                color: isDarkMode ? AppColors.darkMuted : AppColors.muted,
                                 fontSize: 10,
                               ),
                             ),
@@ -288,6 +308,7 @@ class ProductCard extends StatelessWidget {
                     product: decoratedProduct,
                     variant: activeVariant,
                     cartItem: cartItem,
+                    isDark: isDarkMode,
                     onAdd: () {
                       if (currentUser.isAuthenticated) {
                         // If multi-variant, open product detail to let user pick

@@ -110,7 +110,6 @@ class _HomeBody extends StatefulWidget {
 }
 
 class _HomeBodyState extends State<_HomeBody> {
-  late final FirestoreService _firestore;
   Timer? _debounceTimer;
   final _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -118,7 +117,6 @@ class _HomeBodyState extends State<_HomeBody> {
   @override
   void initState() {
     super.initState();
-    _firestore = context.read<FirestoreService>();
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       NativeAdManager.instance.preloadAd();
@@ -394,47 +392,59 @@ class _HomeBodyState extends State<_HomeBody> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Search + Voice + Filter Header
+          // Search + Voice + Filter Header (Pill-shaped Figma style)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingMedium),
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (value) => _onSearchChanged(value, searchProvider),
-                    onSubmitted: (value) {
-                      if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
-                      searchProvider.query = value;
-                    },
-                    decoration: InputDecoration(
-                      hintText: context.translate('searchPlaceholder'),
-                      prefixIcon: const Icon(AppIcons.search),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.mic),
-                        color: AppColors.primary,
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Voice Search'),
-                              content: const Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.mic, size: 48, color: AppColors.primary),
-                                  SizedBox(height: 12),
-                                  Text('Listening... Say product name'),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.surface, // #F7F7F7
+                      borderRadius: BorderRadius.circular(AppDimensions.buttonRadiusPill),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (value) => _onSearchChanged(value, searchProvider),
+                      onSubmitted: (value) {
+                        if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+                        searchProvider.query = value;
+                      },
+                      decoration: InputDecoration(
+                        hintText: context.translate('searchPlaceholder'),
+                        hintStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                        prefixIcon: const Icon(AppIcons.search, color: AppColors.textSecondary, size: 20),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.mic, color: AppColors.primary, size: 20),
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                title: const Text('Voice Search'),
+                                content: const Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.mic, size: 48, color: AppColors.primary),
+                                    SizedBox(height: 12),
+                                    Text('Listening... Say product name', style: TextStyle(color: AppColors.textSecondary)),
+                                  ],
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Cancel', style: TextStyle(color: AppColors.primary)),
+                                  ),
                                 ],
                               ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('Cancel'),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       ),
                     ),
                   ),
@@ -442,13 +452,13 @@ class _HomeBodyState extends State<_HomeBody> {
                 const SizedBox(width: AppDimensions.spacingSmall),
                 Container(
                   decoration: BoxDecoration(
-                    color: AppColors.accent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.accent, width: 1.5),
+                    color: AppColors.amberLight,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFFFDE68A)),
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.filter_list),
-                    color: AppColors.darkGreen,
+                    icon: const Icon(Icons.filter_list, size: 20),
+                    color: AppColors.primary,
                     onPressed: () => _showFilterBottomSheet(context),
                   ),
                 ),

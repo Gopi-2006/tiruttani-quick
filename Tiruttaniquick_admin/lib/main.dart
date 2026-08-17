@@ -219,33 +219,27 @@ class GroceryApp extends StatelessWidget {
         theme: AppTheme.light,
         routerConfig: router,
         builder: (context, child) {
-          return Overlay(
-            initialEntries: [
-              OverlayEntry(
-                builder: (context) => Consumer<CurrentUserProvider>(
-                  builder: (context, userProvider, _) {
-                    return ConnectivityWrapper(
-                      child: InAppNotificationListener(
-                        currentUserId: userProvider.firebaseUser?.uid,
-                        onPlaySound: () {
-                          try {
-                            FlutterRingtonePlayer().playNotification();
-                          } catch (e) {
-                            debugPrint('Error playing ringtone: $e');
-                          }
-                        },
-                        onTapNotification: (orderId) {
-                          if (orderId != null && orderId.isNotEmpty) {
-                            _showOrderDetailsDialog(orderId);
-                          }
-                        },
-                        child: child!,
-                      ),
-                    );
+          return Consumer<CurrentUserProvider>(
+            builder: (context, userProvider, _) {
+              return ConnectivityWrapper(
+                child: InAppNotificationListener(
+                  currentUserId: userProvider.firebaseUser?.uid,
+                  onPlaySound: () {
+                    try {
+                      FlutterRingtonePlayer().playNotification();
+                    } catch (e) {
+                      debugPrint('Error playing ringtone: $e');
+                    }
                   },
+                  onTapNotification: (orderId) {
+                    if (orderId != null && orderId.isNotEmpty) {
+                      _showOrderDetailsDialog(orderId);
+                    }
+                  },
+                  child: child ?? const SizedBox.shrink(),
                 ),
-              ),
-            ],
+              );
+            },
           );
         },
       ),

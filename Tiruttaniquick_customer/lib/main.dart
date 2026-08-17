@@ -200,33 +200,27 @@ class GroceryApp extends StatelessWidget {
             themeMode: settings.themeMode,
             routerConfig: router,
             builder: (context, child) {
-              return Overlay(
-                initialEntries: [
-                  OverlayEntry(
-                    builder: (context) => Consumer<CurrentUserProvider>(
-                      builder: (context, userProvider, _) {
-                        return ConnectivityWrapper(
-                          child: InAppNotificationListener(
-                            currentUserId: userProvider.firebaseUser?.uid,
-                            onPlaySound: () {
-                              try {
-                                FlutterRingtonePlayer().playNotification();
-                              } catch (e) {
-                                debugPrint('[Ringtone] Error playing ringtone: $e');
-                              }
-                            },
-                            onTapNotification: (orderId) {
-                              if (orderId != null && orderId.isNotEmpty) {
-                                router.push('${AppRoutes.myOrders}/$orderId');
-                              }
-                            },
-                            child: child!,
-                          ),
-                        );
+              return Consumer<CurrentUserProvider>(
+                builder: (context, userProvider, _) {
+                  return ConnectivityWrapper(
+                    child: InAppNotificationListener(
+                      currentUserId: userProvider.firebaseUser?.uid,
+                      onPlaySound: () {
+                        try {
+                          FlutterRingtonePlayer().playNotification();
+                        } catch (e) {
+                          debugPrint('[Ringtone] Error playing ringtone: $e');
+                        }
                       },
+                      onTapNotification: (orderId) {
+                        if (orderId != null && orderId.isNotEmpty) {
+                          router.push('${AppRoutes.myOrders}/$orderId');
+                        }
+                      },
+                      child: child ?? const SizedBox.shrink(),
                     ),
-                  ),
-                ],
+                  );
+                },
               );
             },
           );

@@ -84,32 +84,30 @@ class StartupProvider extends ChangeNotifier {
       }
 
       debugPrint('[Startup Log] Phase 2: Running Concurrent Startup Data Tasks...');
-      // Run high, medium, and low priority tasks concurrently with safety timeouts
+      // Run high, medium, and low priority tasks concurrently with safety timeouts and error suppression
       await Future.wait([
-        _waitForAuth().timeout(const Duration(seconds: 4), onTimeout: () {
-          debugPrint('[Startup Log] Auth check timed out');
-        }),
-        serviceAreaProvider.initServiceArea().timeout(const Duration(seconds: 4), onTimeout: () {
+        _waitForAuth().catchError((e) => debugPrint('[Startup Log] Auth check error: $e')),
+        serviceAreaProvider.initServiceArea().timeout(const Duration(seconds: 3), onTimeout: () {
           debugPrint('[Startup Log] Service area check timed out');
-        }),
+        }).catchError((e) => debugPrint('[Startup Log] Service area error: $e')),
         _fetchCategories().timeout(const Duration(seconds: 4), onTimeout: () {
           debugPrint('[Startup Log] Categories fetch timed out');
-        }),
+        }).catchError((e) => debugPrint('[Startup Log] Categories fetch error: $e')),
         _fetchBanners().timeout(const Duration(seconds: 4), onTimeout: () {
           debugPrint('[Startup Log] Banners fetch timed out');
-        }),
+        }).catchError((e) => debugPrint('[Startup Log] Banners fetch error: $e')),
         _fetchOffers().timeout(const Duration(seconds: 4), onTimeout: () {
           debugPrint('[Startup Log] Offers fetch timed out');
-        }),
+        }).catchError((e) => debugPrint('[Startup Log] Offers fetch error: $e')),
         _fetchFlashSales().timeout(const Duration(seconds: 4), onTimeout: () {
           debugPrint('[Startup Log] Flash sales fetch timed out');
-        }),
+        }).catchError((e) => debugPrint('[Startup Log] Flash sales fetch error: $e')),
         _fetchFirstPageProducts().timeout(const Duration(seconds: 4), onTimeout: () {
           debugPrint('[Startup Log] Products fetch timed out');
-        }),
+        }).catchError((e) => debugPrint('[Startup Log] Products fetch error: $e')),
         _initBackgroundServices().timeout(const Duration(seconds: 4), onTimeout: () {
           debugPrint('[Startup Log] Background services init timed out');
-        }),
+        }).catchError((e) => debugPrint('[Startup Log] Background services error: $e')),
       ]);
 
       // Start real-time subscriptions for real-time price changes
@@ -196,11 +194,17 @@ class StartupProvider extends ChangeNotifier {
     void listener() {
       if (!currentUserProvider.loading) {
         currentUserProvider.removeListener(listener);
-        completer.complete();
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
       }
     }
     currentUserProvider.addListener(listener);
-    return completer.future;
+    try {
+      await completer.future.timeout(const Duration(seconds: 4));
+    } catch (_) {
+      currentUserProvider.removeListener(listener);
+    }
   }
 
   /// Fetch categories list from Firestore.

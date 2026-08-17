@@ -347,18 +347,24 @@ class _SearchScreenState extends State<SearchScreen> {
                 _inStockOnly = val;
               });
             },
-            selectedColor: AppColors.accent.withValues(alpha: 0.2),
+            selectedColor: AppColors.amberLight,
             checkmarkColor: AppColors.primary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppDimensions.buttonRadiusPill),
+              side: BorderSide(
+                color: _inStockOnly ? AppColors.primary : AppColors.border,
+              ),
+            ),
           ),
           const SizedBox(width: 8),
           ActionChip(
             label: Text(_selectedWeight ?? 'Weight'),
             backgroundColor: _selectedWeight != null
-                ? AppColors.accent.withValues(alpha: 0.2)
-                : Colors.transparent,
+                ? AppColors.amberLight
+                : AppColors.surface,
             onPressed: () => _showWeightMenu(context),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppDimensions.buttonRadiusPill),
               side: BorderSide(
                 color: _selectedWeight != null
                     ? AppColors.primary
@@ -370,11 +376,11 @@ class _SearchScreenState extends State<SearchScreen> {
           ActionChip(
             label: Text(_selectedVolume ?? 'Volume'),
             backgroundColor: _selectedVolume != null
-                ? AppColors.accent.withValues(alpha: 0.2)
-                : Colors.transparent,
+                ? AppColors.amberLight
+                : AppColors.surface,
             onPressed: () => _showVolumeMenu(context),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppDimensions.buttonRadiusPill),
               side: BorderSide(
                 color: _selectedVolume != null
                     ? AppColors.primary
@@ -386,11 +392,11 @@ class _SearchScreenState extends State<SearchScreen> {
           ActionChip(
             label: Text(_selectedPackSize ?? 'Pack Size'),
             backgroundColor: _selectedPackSize != null
-                ? AppColors.accent.withValues(alpha: 0.2)
-                : Colors.transparent,
+                ? AppColors.amberLight
+                : AppColors.surface,
             onPressed: () => _showPackSizeMenu(context),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppDimensions.buttonRadiusPill),
               side: BorderSide(
                 color: _selectedPackSize != null
                     ? AppColors.primary
@@ -414,7 +420,7 @@ class _SearchScreenState extends State<SearchScreen> {
               },
               child: const Text(
                 'Clear All',
-                style: TextStyle(color: Colors.red, fontSize: 12),
+                style: TextStyle(color: AppColors.error, fontSize: 12, fontWeight: FontWeight.bold),
               ),
             ),
           ],
@@ -445,24 +451,36 @@ class _SearchScreenState extends State<SearchScreen> {
                 horizontal: AppDimensions.paddingMedium,
                 vertical: AppDimensions.paddingSmall,
               ),
-              child: TextField(
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                textInputAction: TextInputAction.search,
-                onChanged: _onQueryChanged,
-                onSubmitted: (val) {
-                  _searchDebounceTimer?.cancel();
-                  _performSearch(val);
-                },
-                decoration: InputDecoration(
-                  hintText: 'Search for milk, bread, banana...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: _clearSearch,
-                        )
-                      : null,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surface, // #F7F7F7
+                  borderRadius: BorderRadius.circular(AppDimensions.buttonRadiusPill),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  textInputAction: TextInputAction.search,
+                  onChanged: _onQueryChanged,
+                  onSubmitted: (val) {
+                    _searchDebounceTimer?.cancel();
+                    _performSearch(val);
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Search for milk, bread, banana...',
+                    hintStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                    prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary, size: 20),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, color: AppColors.textSecondary, size: 18),
+                            onPressed: _clearSearch,
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
                 ),
               ),
             ),
@@ -495,10 +513,10 @@ class _SearchScreenState extends State<SearchScreen> {
                     return ActionChip(
                       label: Text(tag),
                       onPressed: () => _selectTag(tag),
-                      backgroundColor: AppColors.white,
+                      backgroundColor: AppColors.surface,
                       surfaceTintColor: Colors.transparent,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(AppDimensions.buttonRadiusPill),
                         side: const BorderSide(color: AppColors.border),
                       ),
                     );

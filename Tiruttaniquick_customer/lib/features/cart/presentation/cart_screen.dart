@@ -198,19 +198,23 @@ class _CartItemTile extends StatelessWidget {
         : '₹${item.unitPrice.toStringAsFixed(0)}';
 
     return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(
           children: [
             // Product image
             ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppDimensions.imageRadius),
               child: imageUrl.isNotEmpty
                   ? Image.network(
                       imageUrl,
-                      width: 56,
-                      height: 56,
+                      width: 60,
+                      height: 60,
                       fit: BoxFit.contain,
                       errorBuilder: (ctx, url, err) => _CartImagePlaceholder(),
                     )
@@ -224,54 +228,58 @@ class _CartItemTile extends StatelessWidget {
                 children: [
                   Text(
                     productName,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.textPrimary),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     '₹${(item.unitPrice * item.quantity).toStringAsFixed(0)}',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
-                      fontSize: 14,
+                      fontSize: 15,
                       color: AppColors.primary,
                     ),
                   ),
                 ],
               ),
             ),
-            // Quantity controls
+            // Quantity controls (Pill-shaped amber stepper)
             Container(
               decoration: BoxDecoration(
-                border: Border.all(color: AppColors.primary, width: 1.5),
-                borderRadius: BorderRadius.circular(8),
+                color: AppColors.amberLight,
+                border: Border.all(color: const Color(0xFFFDE68A), width: 1.2),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   InkWell(
                     onTap: () => cartProvider.decrement(item),
-                    borderRadius: const BorderRadius.horizontal(left: Radius.circular(6)),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      child: const Icon(AppIcons.remove, size: 16, color: AppColors.primary),
+                    borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      child: Icon(AppIcons.remove, size: 16, color: AppColors.primary),
                     ),
                   ),
-                  Text(
-                    '${item.quantity}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.primary),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      '${item.quantity}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.primary),
+                    ),
                   ),
                   InkWell(
                     onTap: () => cartProvider.increment(item),
-                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(6)),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      child: const Icon(AppIcons.add, size: 16, color: AppColors.primary),
+                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(20)),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      child: Icon(AppIcons.add, size: 16, color: AppColors.primary),
                     ),
                   ),
                 ],

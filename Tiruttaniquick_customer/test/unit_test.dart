@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 import 'package:tiruttaniquick_customer/services/settings_provider.dart';
 import 'package:tiruttaniquick_customer/services/service_area_provider.dart';
+import 'package:tiruttaniquick_customer/services/onboarding_service.dart';
+import 'package:tiruttaniquick_customer/features/onboarding/presentation/onboarding_screen.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -494,6 +496,64 @@ void main() {
       expect(find.text('No Internet Connection'), findsOneWidget);
       expect(find.text('You are currently offline. Please check your network and try again.'), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
+    });
+  });
+
+  group('Onboarding Tests', () {
+    const channel = MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+    final Map<String, String> mockStorage = {};
+
+    setUp(() {
+      mockStorage.clear();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall call) async {
+        switch (call.method) {
+          case 'read':
+            final key = call.arguments['key'] as String;
+            return mockStorage[key];
+          case 'write':
+            final key = call.arguments['key'] as String;
+            final value = call.arguments['value'] as String;
+            mockStorage[key] = value;
+            return null;
+          case 'delete':
+            final key = call.arguments['key'] as String;
+            mockStorage.remove(key);
+            return null;
+          case 'containsKey':
+            final key = call.arguments['key'] as String;
+            return mockStorage.containsKey(key);
+          case 'deleteAll':
+            mockStorage.clear();
+            return null;
+          default:
+            return null;
+        }
+      });
+    });
+
+    test('OnboardingService persists completed state correctly', () async {
+      expect(await OnboardingService.hasSeenOnboarding(), isFalse);
+
+      await OnboardingService.markOnboardingComplete();
+      expect(await OnboardingService.hasSeenOnboarding(), isTrue);
+
+      await OnboardingService.resetOnboarding();
+      expect(await OnboardingService.hasSeenOnboarding(), isFalse);
+    });
+
+    testWidgets('OnboardingScreen renders first slide and navigation elements', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: OnboardingScreen(),
+        ),
+      );
+
+      expect(find.text('Thiruttani Quick'), findsOneWidget);
+      expect(find.text('Skip'), findsOneWidget);
+      expect(find.text('FARM FRESH QUALITY'), findsOneWidget);
+      expect(find.text('Next'), findsOneWidget);
+      expect(find.text('1 of 3'), findsOneWidget);
     });
   });
 }

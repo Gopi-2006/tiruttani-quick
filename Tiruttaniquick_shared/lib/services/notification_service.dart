@@ -8,7 +8,7 @@ class NotificationService {
   static final NotificationService instance = NotificationService._();
   NotificationService._();
 
-  final FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  FirebaseMessaging get _fcm => FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
 
   String? _userId;

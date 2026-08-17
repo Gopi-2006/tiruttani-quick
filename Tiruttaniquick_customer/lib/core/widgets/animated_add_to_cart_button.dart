@@ -11,6 +11,7 @@ class AnimatedAddToCartButton extends StatefulWidget {
   final VoidCallback onAdd;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
+  final bool isDark;
 
   const AnimatedAddToCartButton({
     super.key,
@@ -20,6 +21,7 @@ class AnimatedAddToCartButton extends StatefulWidget {
     required this.onAdd,
     required this.onIncrement,
     required this.onDecrement,
+    this.isDark = false,
   });
 
   @override

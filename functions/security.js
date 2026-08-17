@@ -189,18 +189,14 @@ async function handleLoginFailure(email, res) {
     lockUntil = now + 15 * 60 * 1000; // 15 minutes lockout
     console.warn(`Account locked for ${email} due to 5 consecutive failures.`);
 
-    // Generate Firebase Auth reset password link
-    let resetLink = "#";
+    // Generate genuine Firebase Auth password reset link
     try {
-      resetLink = await admin.auth().generatePasswordResetLink(email);
+      const resetLink = await admin.auth().generatePasswordResetLink(email);
+      // Fire-and-forget sending the email in background so login response timing is not further affected
+      sendLockoutEmail(email, resetLink).catch(err => console.error("Error in background email task:", err));
     } catch (error) {
       console.error("Firebase generatePasswordResetLink failed (possibly user does not exist in Auth yet):", error.message);
-      // Fallback/Mock reset link
-      resetLink = `https://blinkit-grocery.web.app/reset-password?email=${encodeURIComponent(email)}&token=${Buffer.from(email + ":" + now).toString("base64")}`;
     }
-
-    // Fire-and-forget sending the email in background so login response timing is not further affected
-    sendLockoutEmail(email, resetLink).catch(err => console.error("Error in background email task:", err));
   }
 
   await securityCache.setFailedAttempts(email, {

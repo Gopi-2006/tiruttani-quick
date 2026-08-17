@@ -149,8 +149,19 @@
 -dontwarn kotlin.jvm.internal.**
 
 # ==========================================
-# 15. AndroidX Keep Rules
+# 15. AndroidX Keep Rules, WorkManager & Room
 # ==========================================
 -keep class androidx.annotation.** { *; }
--dontwarn androidx.**
 -keep class androidx.lifecycle.** { *; }
+-keep class androidx.startup.** { *; }
+-keep class androidx.work.** { *; }
+-keep class androidx.work.impl.** { *; }
+-keep class * extends androidx.work.impl.WorkDatabase { *; }
+-keep class * extends androidx.room.RoomDatabase { *; }
+-keep class androidx.room.** { *; }
+-keep class * extends androidx.work.Worker { *; }
+-keep class * extends androidx.work.ListenableWorker { *; }
+-dontwarn androidx.work.**
+-dontwarn androidx.room.**
+-dontwarn androidx.startup.**
+-dontwarn androidx.**

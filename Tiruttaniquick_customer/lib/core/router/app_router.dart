@@ -19,6 +19,7 @@ import '../../services/startup_provider.dart';
 import '../../features/profile/presentation/settings_screen.dart';
 import '../../features/profile/presentation/account_deletion_screen.dart';
 import '../../features/splash/presentation/splash_screen.dart';
+import '../../features/onboarding/presentation/onboarding_screen.dart';
 
 CustomTransitionPage<T> buildPageWithTransition<T>({
   required BuildContext context,
@@ -52,17 +53,9 @@ CustomTransitionPage<T> buildPageWithTransition<T>({
 
 final router = GoRouter(
   initialLocation: '/splash',
-  refreshListenable: Listenable.merge([currentUserProvider, serviceAreaProvider, startupProvider]),
+  refreshListenable: Listenable.merge([currentUserProvider, serviceAreaProvider]),
   redirect: (context, state) {
     final location = state.matchedLocation;
-
-    // Gate: Stay on splash until high-priority startup initialization completes
-    if (!startupProvider.isInitialized) {
-      if (location != '/splash') {
-        return '/splash';
-      }
-      return null;
-    }
 
     if (location == '/splash') return null;
 
@@ -73,13 +66,17 @@ final router = GoRouter(
 
     final targetRedirect = () {
       if (!currentUser.isAuthenticated) {
-        if (state.matchedLocation == AppRoutes.home ||
-            state.matchedLocation == '/search' ||
-            state.matchedLocation.startsWith('/products/') ||
-            state.matchedLocation.startsWith('/product/') ||
-            state.matchedLocation == AppRoutes.login ||
-            state.matchedLocation == AppRoutes.signUp ||
-            state.matchedLocation == AppRoutes.otp) {
+        if (location == AppRoutes.home ||
+            location == AppRoutes.onboarding ||
+            location == '/location-check' ||
+            location == '/service-unavailable' ||
+            location == '/settings' ||
+            location == '/search' ||
+            location.startsWith('/products/') ||
+            location.startsWith('/product/') ||
+            location == AppRoutes.login ||
+            location == AppRoutes.signUp ||
+            location == AppRoutes.otp) {
           return null;
         }
         return AppRoutes.login;
@@ -111,6 +108,14 @@ final router = GoRouter(
         context: context,
         state: state,
         child: const SplashScreen(),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.onboarding,
+      pageBuilder: (context, state) => buildPageWithTransition(
+        context: context,
+        state: state,
+        child: const OnboardingScreen(),
       ),
     ),
     GoRoute(

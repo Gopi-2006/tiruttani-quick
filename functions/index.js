@@ -138,17 +138,12 @@ exports.login = onRequest(async (req, res) => {
       if (!userSnapshot.empty) {
         const userData = userSnapshot.docs[0].data();
         
-        // Check password. We support plain check (for dev/testing) or passwordHash if configured.
+        // Check password against stored passwordHash or password field
         if (userData.passwordHash && userData.passwordHash === password) {
           isAuthenticated = true;
         } else if (userData.password && userData.password === password) {
           isAuthenticated = true;
-        } else if (password === "correct_password") {
-          isAuthenticated = true;
         }
-      } else if (password === "correct_password") {
-        // Fallback for test scenarios when user record is not created
-        isAuthenticated = true;
       }
 
       if (isAuthenticated) {

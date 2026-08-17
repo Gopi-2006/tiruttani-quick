@@ -23,6 +23,8 @@ class CategoryCard extends StatelessWidget {
     final isValidUrl = categoryImage.isNotEmpty &&
         (categoryImage.startsWith('http://') || categoryImage.startsWith('https://'));
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -32,9 +34,12 @@ class CategoryCard extends StatelessWidget {
             width: size,
             height: size,
             decoration: BoxDecoration(
-              color: AppColors.lightGreen,
+              color: isDark ? const Color(0xFF2A2315) : AppColors.amberLight,
               shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFFC8E6C9), width: 1.5),
+              border: Border.all(
+                color: isDark ? const Color(0xFF4A3818) : const Color(0xFFFDE68A),
+                width: 1.5,
+              ),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.04),
@@ -87,11 +92,11 @@ class CategoryCard extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w600,
-                fontSize: AppDimensions.fontSizeNormal,
+                fontSize: 12,
                 height: 1.2,
-                color: AppColors.textPrimary,
+                color: isDark ? AppColors.darkText : AppColors.textPrimary,
               ),
             ),
           ),

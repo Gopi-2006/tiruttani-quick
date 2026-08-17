@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 import '../../../services/startup_provider.dart';
 
+import '../../../services/onboarding_service.dart';
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -132,14 +134,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       ),
     );
 
-    // T = 2.1s to 2.3s -> Exit animation (Scale down slightly to 98% and fade out)
-    _exitScale = Tween<double>(begin: 1.0, end: 0.98).animate(
+    // Exit animation stays visible so the router page transition handles the handoff cleanly
+    _exitScale = Tween<double>(begin: 1.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.91, 1.0, curve: Curves.easeInOut),
       ),
     );
-    _exitOpacity = Tween<double>(begin: 1.0, end: 0.0).animate(
+    _exitOpacity = Tween<double>(begin: 1.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.91, 1.0, curve: Curves.easeOut),
@@ -148,36 +150,47 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
-        _animationCompleted = true;
         _checkNavigation();
       }
     });
 
     _controller.forward();
 
-    // Start background loading of all startup data concurrently during the splash animation
+    // Start background loading of startup data concurrently during the splash animation
     startupProvider.runInitialization(context);
-    startupProvider.addListener(_onStartupChange);
+
+    // Hard fallback safety timer: ensure splash never hangs on screen beyond 2.5s
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted && !_navigated) {
+        _checkNavigation();
+      }
+    });
   }
 
-  bool _animationCompleted = false;
+  bool _navigated = false;
 
-  void _onStartupChange() {
-    if (startupProvider.isInitialized) {
-      _checkNavigation();
-    }
-  }
+  Future<void> _checkNavigation() async {
+    if (_navigated || !mounted) return;
+    _navigated = true;
 
-  void _checkNavigation() {
-    if (_animationCompleted && startupProvider.isInitialized) {
+    try {
+      final seenOnboarding = await OnboardingService.hasSeenOnboarding();
       if (!mounted) return;
-      context.go(AppRoutes.home);
+      if (!seenOnboarding) {
+        context.go(AppRoutes.onboarding);
+      } else {
+        context.go(AppRoutes.home);
+      }
+    } catch (e) {
+      debugPrint('[Splash] Navigation error: $e');
+      if (mounted) {
+        context.go(AppRoutes.home);
+      }
     }
   }
 
   @override
   void dispose() {
-    startupProvider.removeListener(_onStartupChange);
     _controller.dispose();
     super.dispose();
   }
@@ -232,7 +245,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                                 ),
                               ),
                               const SizedBox(height: 24),
-                              // Typography
+                              // Typography (Amber #F5A623 & Dark #1A1A1A)
                               FadeTransition(
                                 opacity: _textOpacity,
                                 child: SlideTransition(
@@ -240,12 +253,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                                   child: Column(
                                     children: [
                                       const Text(
-                                        'TIRUTTANI',
+                                        'THIRUTTANI',
                                         style: TextStyle(
-                                          fontFamily: 'Inter',
-                                          fontSize: 30,
+                                          fontSize: 28,
                                           fontWeight: FontWeight.w900,
-                                          color: Color(0xFF16A34A),
+                                          color: AppColors.textPrimary,
                                           letterSpacing: 2,
                                           height: 1.0,
                                         ),
@@ -253,10 +265,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                                       const Text(
                                         'QUICK',
                                         style: TextStyle(
-                                          fontFamily: 'Inter',
-                                          fontSize: 38,
+                                          fontSize: 36,
                                           fontWeight: FontWeight.w900,
-                                          color: Color(0xFF16A34A),
+                                          color: AppColors.primary, // Amber #F5A623
                                           letterSpacing: 3,
                                           height: 1.1,
                                         ),
@@ -265,10 +276,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                                       Text(
                                         'Grocery Delivery',
                                         style: TextStyle(
-                                          fontFamily: 'Inter',
-                                          fontSize: 16,
+                                          fontSize: 15,
                                           fontWeight: FontWeight.w600,
-                                          color: const Color(0xFF16A34A).withValues(alpha: 0.8),
+                                          color: AppColors.textSecondary,
                                           letterSpacing: 1.0,
                                         ),
                                       ),
@@ -295,10 +305,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   child: const Text(
                     'Powered by Ranuka Store',
                     style: TextStyle(
-                      fontFamily: 'Inter',
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: Color(0xFF757575),
+                      color: AppColors.textSecondary,
                       letterSpacing: 0.5,
                     ),
                   ),
@@ -338,7 +347,7 @@ class LogoPainter extends CustomPainter {
     canvas.scale(scaleX, scaleY);
 
     final orangeStrokePaint = Paint()
-      ..color = const Color(0xFFF97316)
+      ..color = AppColors.primary
       ..style = PaintingStyle.stroke
       ..strokeWidth = 6.0
       ..strokeCap = StrokeCap.round
@@ -387,7 +396,7 @@ class LogoPainter extends CustomPainter {
       final finalPinPath = Path.combine(PathOperation.difference, pinPath, cutoutPath);
 
       final pinPaint = Paint()
-        ..color = const Color(0xFF16A34A).withValues(alpha: pinProgress)
+        ..color = AppColors.primary.withValues(alpha: pinProgress)
         ..style = PaintingStyle.fill;
 
       canvas.drawPath(finalPinPath, pinPaint);
@@ -409,10 +418,10 @@ class LogoPainter extends CustomPainter {
         ..lineTo(96, 100)
         ..close();
 
-      // Orange Glow
+      // Amber Glow
       if (lightningGlow > 0) {
         final glowPaint = Paint()
-          ..color = const Color(0xFFFF9800).withValues(alpha: lightningGlow * 0.4)
+          ..color = AppColors.primary.withValues(alpha: lightningGlow * 0.4)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8)
           ..style = PaintingStyle.fill;
         canvas.drawPath(lightningPath, glowPaint);
@@ -428,7 +437,7 @@ class LogoPainter extends CustomPainter {
 
       // Filled lightning shape
       final lPaint = Paint()
-        ..color = const Color(0xFFF97316).withValues(alpha: lightningProgress)
+        ..color = AppColors.primary.withValues(alpha: lightningProgress)
         ..style = PaintingStyle.fill;
       canvas.drawPath(lightningPath, lPaint);
 
@@ -438,7 +447,7 @@ class LogoPainter extends CustomPainter {
     // 4. Draw Speed Lines (fade and slide left to right)
     if (linesProgress > 0) {
       final linesPaint = Paint()
-        ..color = const Color(0xFF16A34A).withValues(alpha: linesProgress)
+        ..color = AppColors.textPrimary.withValues(alpha: linesProgress)
         ..style = PaintingStyle.fill;
 
       // Top Speed Line
