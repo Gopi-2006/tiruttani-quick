@@ -1,7 +1,7 @@
 name: tiruttaniquick_customer
 description: "Thiruttani Quick - Grocery Delivery Customer App"
 publish_to: 'none'
-version: 1.0.9+16
+version: 1.0.10+17
 environment:
   sdk: ">=3.0.0 <4.0.0"
 
