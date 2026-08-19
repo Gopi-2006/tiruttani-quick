@@ -5,6 +5,7 @@ import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 import 'package:tiruttaniquick_customer/services/settings_provider.dart';
 import 'package:tiruttaniquick_customer/services/service_area_provider.dart';
 import 'package:tiruttaniquick_customer/services/onboarding_service.dart';
+import 'package:tiruttaniquick_customer/services/startup_provider.dart';
 import 'package:tiruttaniquick_customer/features/onboarding/presentation/onboarding_screen.dart';
 
 void main() {
@@ -554,6 +555,39 @@ void main() {
       expect(find.text('FARM FRESH QUALITY'), findsOneWidget);
       expect(find.text('Next'), findsOneWidget);
       expect(find.text('1 of 3'), findsOneWidget);
+    });
+  });
+
+  group('ShopSettings & Delivery Availability Tests', () {
+    test('Default shop settings defaults to deliveryAvailable true', () {
+      const settings = ShopSettingsModel();
+      expect(settings.deliveryAvailable, isTrue);
+      expect(settings.deliveryUnavailableMessage, isNotEmpty);
+    });
+
+    test('ShopSettingsModel copyWith works accurately', () {
+      const settings = ShopSettingsModel();
+      final updated = settings.copyWith(
+        deliveryAvailable: false,
+        deliveryUnavailableMessage: 'Heavy rain in Tiruttani',
+        updatedBy: 'admin_test',
+      );
+      expect(updated.deliveryAvailable, isFalse);
+      expect(updated.deliveryUnavailableMessage, 'Heavy rain in Tiruttani');
+      expect(updated.updatedBy, 'admin_test');
+    });
+
+    test('ShopSettingsModel handles null from Firestore gracefully', () {
+      final settings = ShopSettingsModel.fromFirestore(null);
+      expect(settings.deliveryAvailable, isTrue);
+    });
+  });
+
+  group('Order Tracking Navigation & Push Notification Route Tests', () {
+    test('StartupProvider pendingNotificationRoute handles set and consume lifecycle', () {
+      final startup = StartupProvider();
+      expect(startup.pendingNotificationRoute, isNull);
+      expect(startup.consumePendingNotificationRoute(), isNull);
     });
   });
 }

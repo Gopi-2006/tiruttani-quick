@@ -15,7 +15,6 @@ import '../../features/service_area/location_check_screen.dart';
 import '../../features/service_area/service_unavailable_screen.dart';
 import '../../services/current_user_provider.dart';
 import '../../services/service_area_provider.dart';
-import '../../services/startup_provider.dart';
 import '../../features/profile/presentation/settings_screen.dart';
 import '../../features/profile/presentation/account_deletion_screen.dart';
 import '../../features/splash/presentation/splash_screen.dart';

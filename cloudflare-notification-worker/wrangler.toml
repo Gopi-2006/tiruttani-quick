@@ -1,0 +1,14 @@
+name = "tiruttani-quick-notification-worker"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "production"
+# Expected Admin Emails (comma-separated if multiple)
+ALLOWED_ADMIN_EMAILS = "gopim2006@gmail.com"
+
+# Secrets to be configured via `wrangler secret put`:
+# FIREBASE_PROJECT_ID
+# FIREBASE_CLIENT_EMAIL
+# FIREBASE_PRIVATE_KEY

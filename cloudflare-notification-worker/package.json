@@ -1,0 +1,24 @@
+{
+  "name": "tiruttani-quick-notification-worker",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for dispatching FCM HTTP v1 push notifications on Firebase Spark plan",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/worker.test.js"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "fcm",
+    "firebase",
+    "push-notifications"
+  ],
+  "author": "Tiruttani Quick",
+  "license": "ISC",
+  "devDependencies": {
+    "wrangler": "^3.107.2"
+  }
+}

@@ -15,20 +15,21 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && getUserData().role == 'Admin';
+      return isSignedIn() && (getUserData().role == 'Admin' || getUserData().role == 'admin');
     }
 
     function isDeliveryAgent() {
-      return isSignedIn() && getUserData().role == 'Delivery Agent';
+      return isSignedIn() && (getUserData().role == 'Delivery Agent' || getUserData().role == 'delivery_agent');
     }
 
-    // Helper to identify firebase owner based on email pattern (matches AuthRepository)
+    // Grants admin-bootstrap rights ONLY to the exact whitelisted owner email.
+    // SECURITY: Do NOT use substring/regex matching (e.g. .*admin.*) — that would let
+    // any email containing "admin" (e.g. user@admin-services.com) self-promote to Admin.
     function isFirebaseOwner(auth) {
       return auth != null && 
              auth.token != null && 
              auth.token.email != null && 
-             (auth.token.email.toLowerCase().matches('.*gopim.*') || 
-              auth.token.email.toLowerCase().matches('.*admin.*'));
+             auth.token.email.lower() == 'gopim2006@gmail.com';
     }
 
     match /users/{userId} {
@@ -47,13 +48,21 @@ service cloud.firestore {
       );
       
       allow delete: if isAdmin();
+
+      match /fcmTokens/{tokenId} {
+        allow read, write: if isSignedIn() && (userId == request.auth.uid || isAdmin());
+      }
     }
 
     match /addresses/{addressId} {
-      allow read: if isSignedIn() && resource.data.userId == userId();
+      allow read: if isSignedIn() && (resource.data.userId == userId() || isAdmin());
       allow create: if isSignedIn() && request.resource.data.userId == userId();
-      allow update: if isSignedIn() && resource.data.userId == userId();
-      allow delete: if isSignedIn() && resource.data.userId == userId();
+      allow update: if isSignedIn() && (resource.data.userId == userId() || isAdmin());
+      allow delete: if isSignedIn() && (resource.data.userId == userId() || isAdmin());
+    }
+
+    match /{path=**}/addresses/{addressId} {
+      allow read: if isSignedIn() && (resource.data.userId == userId() || isAdmin());
     }
 
     match /cart_items/{cartItemId} {
@@ -80,6 +89,10 @@ service cloud.firestore {
           isAdmin()
         );
       }
+    }
+
+    match /{path=**}/order_items/{itemId} {
+      allow read: if isSignedIn() && (isAdmin() || isDeliveryAgent());
     }
 
     match /categories/{categoryId} {
@@ -114,6 +127,16 @@ service cloud.firestore {
 
     match /delivery_agents/{agentId} {
       allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /shop_settings/{documentId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /shopSettings/{documentId} {
+      allow read: if true;
       allow write: if isAdmin();
     }
   }

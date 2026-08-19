@@ -6,7 +6,6 @@ import '../../../services/settings_provider.dart';
 
 import '../../../core/widgets/custom_app_bar.dart';
 import '../../../core/widgets/custom_button.dart';
-import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/loading_widget.dart';
 
 import '../../../services/current_user_provider.dart';
@@ -139,9 +138,49 @@ class _CartScreenState extends State<CartScreen> {
       // Cart is loading — show spinner (only before first successful load)
       bodyWidget = const LoadingWidget();
     } else if (cartProvider.items.isEmpty) {
-      bodyWidget = const EmptyState(
-        message: Messages.cartEmpty,
-        icon: AppIcons.shoppingCartOutlined,
+      bodyWidget = Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppDimensions.paddingLarge),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                AppIcons.shoppingCartOutlined,
+                size: AppDimensions.iconSizeExtraLarge,
+                color: AppColors.muted,
+              ),
+              const SizedBox(height: AppDimensions.spacingMedium),
+              const Text(
+                Messages.cartEmpty,
+                style: TextStyle(
+                  fontSize: AppDimensions.fontSizeExtraLarge,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: AppDimensions.spacingSmall),
+              const Text(
+                'Explore items and add groceries to your cart.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.muted),
+              ),
+              const SizedBox(height: AppDimensions.spacingLarge),
+              SizedBox(
+                width: 220,
+                child: CustomButton(
+                  onPressed: () {
+                    if (Navigator.canPop(context)) {
+                      Navigator.pop(context);
+                    } else {
+                      context.go(AppRoutes.home);
+                    }
+                  },
+                  text: 'Continue Shopping',
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     } else {
       bodyWidget = Column(
@@ -353,8 +392,8 @@ class _CartSummaryState extends State<_CartSummary> {
                       Icon(Icons.local_offer_outlined, color: AppColors.orange, size: 20),
                       SizedBox(width: 8),
                       Text(
-                        'Apply Coupon (RANUKA10, TIRUTTANI20)',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.text),
+                        'Apply Coupon',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.text),
                       ),
                     ],
                   ),

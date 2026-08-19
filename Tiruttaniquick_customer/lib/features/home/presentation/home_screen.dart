@@ -392,6 +392,7 @@ class _HomeBodyState extends State<_HomeBody> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildDeliveryAvailabilityBanner(),
           // Search + Voice + Filter Header (Pill-shaped Figma style)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingMedium),
@@ -512,6 +513,63 @@ class _HomeBodyState extends State<_HomeBody> {
           const SizedBox(height: AppDimensions.spacingLarge),
         ],
       ),
+    );
+  }
+
+  Widget _buildDeliveryAvailabilityBanner() {
+    return StreamBuilder<ShopSettingsModel>(
+      stream: FirestoreService().shopSettingsStream(),
+      builder: (context, snapshot) {
+        final settings = snapshot.data ?? const ShopSettingsModel();
+        if (settings.deliveryAvailable) {
+          return const SizedBox.shrink();
+        }
+
+        return Container(
+          margin: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.paddingMedium,
+            vertical: AppDimensions.spacingSmall,
+          ),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFEF2F2),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFFECACA)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.remove_shopping_cart_rounded, color: Color(0xFFDC2626), size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '🔴 Delivery Currently Unavailable',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF991B1B),
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      settings.deliveryUnavailableMessage.isNotEmpty
+                          ? settings.deliveryUnavailableMessage
+                          : 'Orders are temporarily unavailable. Please try again later.',
+                      style: const TextStyle(
+                        color: Color(0xFFB91C1C),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

@@ -148,6 +148,9 @@ class _SearchScreenState extends State<SearchScreen> {
       }
 
       if (!mounted) return;
+      // Stale query guard: ignore results if the user has changed the query
+      if (_query != cleanQuery) return;
+
       setState(() {
         _isSearching = false;
         _searchError = null;

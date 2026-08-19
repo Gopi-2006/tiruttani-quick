@@ -119,13 +119,13 @@ async function sendLockoutEmail(email, resetLink) {
       });
 
       const mailOptions = {
-        from: '"Blinkit Security" <security@blinkit-grocery.com>',
+        from: '"Tiruttani Quick" <noreply@tiruttaniquick.com>',
         to: email,
         subject: "Security Alert: Your account has been temporarily locked",
         html: `
           <div style="font-family: sans-serif; padding: 20px; line-height: 1.6;">
             <h2>Account Temporarily Locked</h2>
-            <p>We detected multiple failed login attempts on your Blinkit account.</p>
+            <p>We detected multiple failed login attempts on your Tiruttani Quick account.</p>
             <p>To protect your security, your account has been locked for 15 minutes.</p>
             <p>You can unlock it immediately or reset your password using the link below:</p>
             <p style="margin: 20px 0;">

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:excel/excel.dart' hide Border, TextSpan;
@@ -50,12 +51,26 @@ class _OrderReportsTabState extends State<OrderReportsTab> {
   }
 
   Future<void> _loadCacheData() async {
+    debugPrint('[REPORTS] Starting query (pre-cache metadata)');
     try {
+      Future<QuerySnapshot<Map<String, dynamic>>?> safeFetch(
+        Future<QuerySnapshot<Map<String, dynamic>>> future,
+        String name,
+      ) {
+        return future
+            .timeout(const Duration(seconds: 10))
+            .then<QuerySnapshot<Map<String, dynamic>>?>((v) => v)
+            .catchError((e) {
+          debugPrint('[REPORTS] Warning: $name cache query: $e');
+          return null;
+        });
+      }
+
       final results = await Future.wait([
-        _db.collection('users').where('role', isEqualTo: 'customer').get(),
-        _db.collection('products').get(),
-        _db.collection('categories').get(),
-        _db.collectionGroup('addresses').get(),
+        safeFetch(_db.collection('users').get(), 'users'),
+        safeFetch(_db.collection('products').get(), 'products'),
+        safeFetch(_db.collection('categories').get(), 'categories'),
+        safeFetch(_db.collection('addresses').get(), 'addresses'),
       ]);
 
       final userSnap = results[0];
@@ -65,33 +80,42 @@ class _OrderReportsTabState extends State<OrderReportsTab> {
 
       final Map<String, String> customers = {};
       final Map<String, String> phones = {};
-      for (final doc in userSnap.docs) {
-        customers[doc.id] = doc.data()['name']?.toString() ?? 'Customer';
+      if (userSnap != null) {
+        for (final doc in userSnap.docs) {
+          customers[doc.id] = doc.data()['name']?.toString() ?? 'Customer';
+        }
       }
 
-      for (final doc in addressSnap.docs) {
-        final userId = doc.data()['userId']?.toString();
-        final ph = doc.data()['phone']?.toString();
-        if (userId != null && ph != null) {
-          phones[userId] = ph;
+      if (addressSnap != null) {
+        for (final doc in addressSnap.docs) {
+          final userId = doc.data()['userId']?.toString();
+          final ph = doc.data()['phone']?.toString();
+          if (userId != null && ph != null) {
+            phones[userId] = ph;
+          }
         }
       }
 
       final Map<String, String> products = {};
       final Map<String, String> brands = {};
       final Map<String, String> productCategories = {};
-      for (final doc in productSnap.docs) {
-        final name = doc.data()['productName']?.toString() ?? doc.data()['name']?.toString() ?? 'Product';
-        products[doc.id] = name;
-        brands[doc.id] = doc.data()['brand']?.toString() ?? 'No Brand';
-        productCategories[doc.id] = doc.data()['category']?.toString() ?? doc.data()['categoryId']?.toString() ?? '';
+      if (productSnap != null) {
+        for (final doc in productSnap.docs) {
+          final name = doc.data()['productName']?.toString() ?? doc.data()['name']?.toString() ?? 'Product';
+          products[doc.id] = name;
+          brands[doc.id] = doc.data()['brand']?.toString() ?? 'No Brand';
+          productCategories[doc.id] = doc.data()['category']?.toString() ?? doc.data()['categoryId']?.toString() ?? '';
+        }
       }
 
       final Map<String, String> categories = {};
-      for (final doc in categorySnap.docs) {
-        categories[doc.id] = doc.data()['name']?.toString() ?? 'Category';
+      if (categorySnap != null) {
+        for (final doc in categorySnap.docs) {
+          categories[doc.id] = doc.data()['name']?.toString() ?? 'Category';
+        }
       }
 
+      debugPrint('[REPORTS] Pre-cache metadata query completed');
       if (mounted) {
         setState(() {
           _customersMap = customers;
@@ -104,7 +128,7 @@ class _OrderReportsTabState extends State<OrderReportsTab> {
         });
       }
     } catch (e) {
-      debugPrint('Error preloading cache: $e');
+      debugPrint('[REPORTS] ERROR: Pre-cache loading failed: $e');
       if (mounted) {
         setState(() => _loadingCache = false);
       }
@@ -621,6 +645,16 @@ class _OrderReportsTabState extends State<OrderReportsTab> {
               onChangeStatus: (status) async {
                 if (status == null) return;
                 await widget.firestore.updateOrderStatus(orderId: order.id, status: status);
+
+                if (order.customerId.isNotEmpty) {
+                  NotificationSenderService.instance.sendOrderStatusNotification(
+                    orderId: order.id,
+                    orderNumber: order.orderNumber,
+                    customerId: order.customerId,
+                    status: status,
+                  );
+                }
+
                 if (context.mounted) Navigator.pop(context);
               },
             ),
@@ -632,6 +666,32 @@ class _OrderReportsTabState extends State<OrderReportsTab> {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lock_outline, size: 48, color: Colors.orange),
+              SizedBox(height: 16),
+              Text(
+                'Authentication Required',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Please sign in to access Reports & Analytics.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (_loadingCache) {
       if (!ConnectivityProvider.instance.isOnline) {
         return OfflinePlaceholderWidget(
@@ -644,25 +704,73 @@ class _OrderReportsTabState extends State<OrderReportsTab> {
     return StreamBuilder<List<OrderModel>>(
       stream: widget.firestore.adminOrdersStream(),
       builder: (context, ordersSnapshot) {
+        if (ordersSnapshot.hasError) {
+          debugPrint('[REPORTS] ERROR: Orders stream failure: ${ordersSnapshot.error}');
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Unable to load reports. Please try again.',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${ordersSnapshot.error}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _loadingCache = true;
+                      });
+                      _loadCacheData();
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        if (ordersSnapshot.connectionState == ConnectionState.waiting && !ordersSnapshot.hasData) {
+          if (!ConnectivityProvider.instance.isOnline) {
+            return OfflinePlaceholderWidget(
+              onRetrySuccess: () => setState(() {}),
+            );
+          }
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final allOrders = ordersSnapshot.data ?? [];
+        debugPrint('[REPORTS] Query completed');
+        debugPrint('[REPORTS] Documents received: ${allOrders.length}');
+
         return StreamBuilder<QuerySnapshot>(
           stream: _db.collectionGroup('order_items').snapshots(),
           builder: (context, itemsSnapshot) {
-            if (!ordersSnapshot.hasData || !itemsSnapshot.hasData) {
-              if (!ConnectivityProvider.instance.isOnline) {
-                return OfflinePlaceholderWidget(
-                  onRetrySuccess: () {},
-                );
-              }
-              return const Center(child: CircularProgressIndicator());
+            if (itemsSnapshot.hasError) {
+              debugPrint('[REPORTS] Warning: order_items stream error: ${itemsSnapshot.error}');
             }
 
-            final allOrders = ordersSnapshot.data ?? [];
-            final allOrderItems = itemsSnapshot.data!.docs
-                .map((doc) => doc.data() as Map<String, dynamic>)
-                .toList();
+            final allOrderItems = itemsSnapshot.hasData
+                ? itemsSnapshot.data!.docs
+                    .map((doc) => doc.data() as Map<String, dynamic>)
+                    .toList()
+                : <Map<String, dynamic>>[];
 
             // Run Filters
             final filteredOrders = _filterOrders(allOrders, allOrderItems);
+            debugPrint('[REPORTS] Aggregation completed (Filtered orders: ${filteredOrders.length})');
+            debugPrint('[REPORTS] UI state updated');
 
             // Compute aggregations on the filtered set
             double totalRevenue = 0.0;

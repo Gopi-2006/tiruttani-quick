@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
+import '../../../services/current_user_provider.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -147,15 +148,42 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
-        context.go(AppRoutes.admin);
+        _navigateNext();
       }
     });
 
     _controller.forward();
   }
 
+  void _navigateNext() {
+    if (!mounted) return;
+    final userProvider = currentUserProvider;
+    if (userProvider.loading) {
+      userProvider.addListener(_onUserProviderChange);
+      return;
+    }
+    _doNavigation();
+  }
+
+  void _onUserProviderChange() {
+    if (!currentUserProvider.loading && mounted) {
+      currentUserProvider.removeListener(_onUserProviderChange);
+      _doNavigation();
+    }
+  }
+
+  void _doNavigation() {
+    if (!mounted) return;
+    if (currentUserProvider.isAuthenticated) {
+      context.go(AppRoutes.admin);
+    } else {
+      context.go(AppRoutes.login);
+    }
+  }
+
   @override
   void dispose() {
+    currentUserProvider.removeListener(_onUserProviderChange);
     _controller.dispose();
     super.dispose();
   }

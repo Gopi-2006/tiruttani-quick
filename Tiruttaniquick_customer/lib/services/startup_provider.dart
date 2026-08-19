@@ -47,6 +47,16 @@ class StartupProvider extends ChangeNotifier {
   bool _isLoadingMore = false;
   bool get isLoadingMore => _isLoadingMore;
 
+  String? _pendingNotificationRoute;
+  String? get pendingNotificationRoute => _pendingNotificationRoute;
+
+  /// Consumes and clears any pending notification deep-link route (e.g. on splash completion)
+  String? consumePendingNotificationRoute() {
+    final route = _pendingNotificationRoute;
+    _pendingNotificationRoute = null;
+    return route;
+  }
+
   /// Start the initialization process in the background.
   Future<void> runInitialization(BuildContext context) async {
     if (_isInitialized) return;
@@ -378,19 +388,39 @@ class StartupProvider extends ChangeNotifier {
     // 3. Initialize NotificationService
     try {
       debugPrint('[Startup Log] Sub-step 3: Initializing Notification Service...');
+      try {
+        FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      } catch (e) {
+        debugPrint('[Startup Log] Background messaging handler registration non-fatal error: $e');
+      }
       await NotificationService.instance.initialize(
         onNotificationTap: (payload) {
           debugPrint('[Startup Log] Notification Tapped: $payload');
-          final type = payload['type'] ?? '';
-          final screen = payload['screen'] ?? '';
-          final orderId = payload['orderId'] ?? '';
+          final type = payload['type']?.toString() ?? '';
+          final screen = payload['screen']?.toString() ?? '';
+          final orderId = payload['orderId']?.toString() ?? '';
+          final productId = payload['productId']?.toString() ?? '';
+          final offerId = payload['offerId']?.toString() ?? '';
 
-          if (screen == 'order_tracking' || type == 'order') {
-            if (orderId.isNotEmpty) {
-              router.push('${AppRoutes.myOrders}/$orderId');
+          String targetRoute = AppRoutes.home;
+          if (type == 'order_status' || type == 'order' || screen == 'order_tracking') {
+            targetRoute = orderId.isNotEmpty ? '${AppRoutes.myOrders}/$orderId' : AppRoutes.myOrders;
+          } else if (type == 'promotion') {
+            if (productId.isNotEmpty) {
+              targetRoute = '/product/$productId';
+            } else if (offerId.isNotEmpty) {
+              targetRoute = '/offer/$offerId';
             }
-          } else if (type == 'promotion' || screen == 'home') {
-            router.go(AppRoutes.home);
+          } else if (type == 'general' || screen == 'home') {
+            targetRoute = AppRoutes.home;
+          } else if (orderId.isNotEmpty) {
+            targetRoute = '${AppRoutes.myOrders}/$orderId';
+          }
+
+          if (!_isInitialized) {
+            _pendingNotificationRoute = targetRoute;
+          } else {
+            router.push(targetRoute);
           }
         },
       );

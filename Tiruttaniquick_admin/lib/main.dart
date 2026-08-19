@@ -5,7 +5,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:provider/provider.dart';
 
 import 'core/router/app_router.dart';
@@ -93,9 +92,14 @@ void _initializeBackgroundServices() async {
     // Initialize our NotificationService
     await NotificationService.instance.initialize(
       onNotificationTap: (payload) {
-        debugPrint('Admin Notification Tapped: $payload');
-        // Admin notification -> Open Admin Dashboard
-        router.go(AppRoutes.adminDashboard);
+        debugPrint('[Admin Main] Notification Tapped: $payload');
+        final orderId = payload['orderId']?.toString() ?? '';
+        router.go(AppRoutes.admin);
+        if (orderId.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            showOrderDetailsDialog(orderId);
+          });
+        }
       },
     );
   } catch (e) {
@@ -103,19 +107,16 @@ void _initializeBackgroundServices() async {
   }
 }
 
-class GroceryApp extends StatelessWidget {
-  const GroceryApp({super.key});
+void showOrderDetailsDialog(String orderId) async {
+  final navContext = router.routerDelegate.navigatorKey.currentContext;
+  if (navContext == null) return;
 
-  void _showOrderDetailsDialog(String orderId) async {
-    final navContext = router.routerDelegate.navigatorKey.currentContext;
-    if (navContext == null) return;
+  final db = FirebaseFirestore.instance;
+  final firestore = navContext.read<FirestoreService>();
 
-    final db = FirebaseFirestore.instance;
-    final firestore = navContext.read<FirestoreService>();
-
-    showDialog(
-      context: navContext,
-      builder: (context) {
+  showDialog(
+    context: navContext,
+    builder: (context) {
         return FutureBuilder<DocumentSnapshot>(
           future: db.collection('orders').doc(orderId).get(),
           builder: (context, snapshot) {
@@ -173,6 +174,14 @@ class GroceryApp extends StatelessWidget {
                           body: 'Order #${order.orderNumber} is now $status',
                           orderId: order.id,
                         );
+
+                        // Dispatch Push Notification via Cloudflare Worker (FCM HTTP v1)
+                        NotificationSenderService.instance.sendOrderStatusNotification(
+                          orderId: order.id,
+                          orderNumber: order.orderNumber,
+                          customerId: customerId,
+                          status: status,
+                        );
                       }
 
                       final Map<String, dynamic> extra = {};
@@ -206,6 +215,9 @@ class GroceryApp extends StatelessWidget {
     );
   }
 
+class GroceryApp extends StatelessWidget {
+  const GroceryApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -224,16 +236,9 @@ class GroceryApp extends StatelessWidget {
               return ConnectivityWrapper(
                 child: InAppNotificationListener(
                   currentUserId: userProvider.firebaseUser?.uid,
-                  onPlaySound: () {
-                    try {
-                      FlutterRingtonePlayer().playNotification();
-                    } catch (e) {
-                      debugPrint('Error playing ringtone: $e');
-                    }
-                  },
                   onTapNotification: (orderId) {
                     if (orderId != null && orderId.isNotEmpty) {
-                      _showOrderDetailsDialog(orderId);
+                      showOrderDetailsDialog(orderId);
                     }
                   },
                   child: child ?? const SizedBox.shrink(),

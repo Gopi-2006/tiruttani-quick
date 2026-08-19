@@ -14,17 +14,19 @@ class NotificationService {
   String? _userId;
   String? _userRole;
   Function(Map<String, dynamic> payload)? _onTapCallback;
+  Map<String, dynamic>? _pendingPayload;
+  bool _isInitialized = false;
 
   String? get userId => _userId;
   String? get userRole => _userRole;
 
-  // Initialize notifications setup
+  /// Initialize notifications setup: Firebase Cloud Messaging, Local Notifications, and Channels
   Future<void> initialize({
     required Function(Map<String, dynamic> payload) onNotificationTap,
   }) async {
     _onTapCallback = onNotificationTap;
 
-    // Local notifications initialization settings
+    // 1. Local notifications initialization settings for foreground alerts and fallback
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
@@ -37,142 +39,199 @@ class NotificationService {
       initSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         final payloadStr = response.payload;
-        if (payloadStr != null && _onTapCallback != null) {
+        if (payloadStr != null) {
           try {
             final Map<String, dynamic> payload = json.decode(payloadStr) as Map<String, dynamic>;
-            _onTapCallback!(payload);
+            _handleNotificationData(payload);
           } catch (e) {
-            debugPrint('Error parsing notification response payload: $e');
+            debugPrint('[NotificationService] Error parsing notification response payload: $e');
           }
         }
       },
     );
 
-    // Create the required notification channels for Android
+    // 2. Create the required notification channels for Android
     await _createNotificationChannels();
 
-    // Set foreground notification options (disable default banners to prevent duplicates with local notifications)
-    await _fcm.setForegroundNotificationPresentationOptions(
-      alert: false,
-      badge: true,
-      sound: true,
-    );
+    // 3. Firebase Messaging Setup
+    if (!_isInitialized) {
+      try {
+        await requestPermission();
 
-    // Handle messages when app is in the foreground
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint('Foreground message received: ${message.notification?.title}');
-      _handleForegroundMessage(message);
-    });
+        await _fcm.setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
 
-    // Handle notification clicks when the app is in the background
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      debugPrint('Notification clicked (App in background): ${message.data}');
-      if (_onTapCallback != null) {
-        _onTapCallback!(message.data);
-      }
-    });
+        // Listen for foreground FCM messages
+        FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+          debugPrint('[FCM] Foreground message received: ${message.notification?.title}');
+          _handleForegroundMessage(message);
+        });
 
-    // Check if the app was opened from a terminated state via a notification click
-    final initialMessage = await _fcm.getInitialMessage();
-    if (initialMessage != null) {
-      debugPrint('Notification clicked (App terminated): ${initialMessage.data}');
-      if (_onTapCallback != null) {
-        _onTapCallback!(initialMessage.data);
+        // Listen for notification taps when the app was in the background
+        FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+          debugPrint('[FCM] Notification tapped (App in background): ${message.data}');
+          _handleNotificationData(message.data);
+        });
+
+        // Check if the app was opened from a terminated state via notification tap
+        final initialMessage = await _fcm.getInitialMessage();
+        if (initialMessage != null) {
+          debugPrint('[FCM] Notification tapped (App terminated): ${initialMessage.data}');
+          _handleNotificationData(initialMessage.data);
+        }
+
+        // Listen for FCM token refreshes
+        _fcm.onTokenRefresh.listen((newToken) {
+          debugPrint('[FCM] Token refreshed: ${newToken.substring(0, newToken.length > 8 ? 8 : newToken.length)}...');
+          if (_userId != null) {
+            _saveTokenToFirestore(_userId!, newToken);
+          }
+        });
+
+        _isInitialized = true;
+      } catch (e, stack) {
+        debugPrint('[FCM] Setup non-fatal error: $e\n$stack');
       }
     }
 
-    // Auto update user's FCM token when it is refreshed by Firebase
-    _fcm.onTokenRefresh.listen((token) async {
-      debugPrint('FCM Token refreshed: $token');
-      if (_userId != null) {
-        await _saveTokenToFirestore(_userId!, token);
-      }
-    });
-
-    // Request permissions during initialization
-    await requestPermission();
+    // Flush any pending notification tapped before UI was mounted
+    if (_pendingPayload != null && _onTapCallback != null) {
+      final payload = _pendingPayload!;
+      _pendingPayload = null;
+      _onTapCallback!(payload);
+    }
   }
 
-  // Set up user profile mapping to auto refresh tokens
+  /// Centralized notification payload dispatcher
+  void _handleNotificationData(Map<String, dynamic> data) {
+    if (_onTapCallback != null) {
+      _onTapCallback!(data);
+    } else {
+      _pendingPayload = data;
+    }
+  }
+
+  /// Setup user identification and sync active FCM token to Firestore
   Future<void> setupUser(String uid, String role) async {
     _userId = uid;
     _userRole = role;
 
-    final hasPermission = await requestPermission();
-    if (hasPermission) {
+    try {
       final token = await getFCMToken();
-      if (token != null) {
+      if (token != null && token.isNotEmpty) {
         await _saveTokenToFirestore(uid, token);
       }
+    } catch (e) {
+      debugPrint('[FCM] Error setting up user token: $e');
     }
   }
 
-  // Request notifications permissions
+  /// Request notifications permission (Android 13+ / iOS)
   Future<bool> requestPermission() async {
-    final settings = await _fcm.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-      announcement: false,
-      carPlay: false,
-      criticalAlert: false,
-      provisional: false,
-    );
-    return settings.authorizationStatus == AuthorizationStatus.authorized ||
-        settings.authorizationStatus == AuthorizationStatus.provisional;
+    try {
+      final settings = await _fcm.requestPermission(
+        alert: true,
+        announcement: false,
+        badge: true,
+        carPlay: false,
+        criticalAlert: false,
+        provisional: false,
+        sound: true,
+      );
+
+      return settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional;
+    } catch (e) {
+      debugPrint('[FCM] Error requesting permission: $e');
+      return false;
+    }
   }
 
-  // Fetch the active FCM token using correct name
+  /// Fetch the active FCM registration token
   Future<String?> getFCMToken() async {
     try {
       return await _fcm.getToken();
     } catch (e) {
-      debugPrint('Error getting FCM token: $e');
+      debugPrint('[NotificationService] Error getting FCM token: $e');
       return null;
     }
   }
 
-  // Legacy/Alternative token getter for backward compatibility
+  /// Legacy token getter alias
   Future<String?> getToken() async {
     return getFCMToken();
   }
 
-  // Save fcmToken inside firestore
+  /// Save FCM registration token inside Firestore
   Future<void> _saveTokenToFirestore(String uid, String token) async {
     try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+      // 1. Primary user document token
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'uid': uid,
         'fcmToken': token,
-      });
-      debugPrint('FCM Token updated successfully for user: $uid');
-    } catch (e) {
-      // Fallback: If update fails (e.g. document does not exist yet), set with merge
-      try {
-        await FirebaseFirestore.instance.collection('users').doc(uid).set({
-          'uid': uid,
-          'fcmToken': token,
-        }, SetOptions(merge: true));
-        debugPrint('FCM Token saved successfully (set merge) for user: $uid');
-      } catch (innerError) {
-        debugPrint('Failed to save FCM token to Firestore: $innerError');
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // 2. Multi-device subcollection support
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('fcmTokens')
+          .doc(token)
+          .set({
+        'token': token,
+        'platform': defaultTargetPlatform.name,
+        'lastSeen': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (kDebugMode) {
+        final truncated = token.length > 12
+            ? '${token.substring(0, 6)}...${token.substring(token.length - 6)}'
+            : token;
+        debugPrint('FCM token registered: $truncated');
       }
+
+      debugPrint('[NotificationService] FCM Token synced to Firestore for user: $uid');
+    } catch (e) {
+      debugPrint('[NotificationService] Failed to save FCM token to Firestore: $e');
     }
   }
 
-  // Delete FCM token from user's record on logout
+  /// Logout customer: Clear FCM token and Firestore registration
   Future<void> clearToken(String uid) async {
+    final currentToken = await getFCMToken();
+
     _userId = null;
     _userRole = null;
+
     try {
+      // Remove token from primary user document
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'fcmToken': FieldValue.delete(),
       });
-      debugPrint('FCM Token removed from Firestore for user: $uid');
+
+      // Remove device subcollection entry if available
+      if (currentToken != null && currentToken.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .collection('fcmTokens')
+            .doc(currentToken)
+            .delete();
+      }
+
+      // Delete the active token on the device instance
+      await _fcm.deleteToken();
+      debugPrint('[NotificationService] FCM token deleted on logout for user: $uid');
     } catch (e) {
-      debugPrint('Failed to remove FCM token from Firestore: $e');
+      debugPrint('[NotificationService] Error clearing FCM token on logout: $e');
     }
   }
 
-  // Configure Android Notification Channels
+  /// Configure Android Notification Channels
   Future<void> _createNotificationChannels() async {
     if (defaultTargetPlatform != TargetPlatform.android) return;
 
@@ -180,7 +239,6 @@ class NotificationService {
         AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidPlugin != null) {
-      // 1. Orders Channel
       const ordersChannel = AndroidNotificationChannel(
         'orders_channel',
         'Orders',
@@ -190,7 +248,6 @@ class NotificationService {
         enableVibration: true,
       );
 
-      // 2. Promotions Channel
       const promotionsChannel = AndroidNotificationChannel(
         'promotions_channel',
         'Promotions',
@@ -199,45 +256,73 @@ class NotificationService {
         playSound: true,
       );
 
-      // 3. Admin Channel
       const adminChannel = AndroidNotificationChannel(
         'admin_channel',
         'Admin Alerts',
-        description: 'Alerts for new orders, registrations, and low stock.',
+        description: 'Alerts for general notifications, registrations, and low stock.',
         importance: Importance.max,
         playSound: true,
+        enableVibration: true,
+      );
+
+      // Dedicated loud high-priority channel for Admin New Orders with bundled alert sound (v2 for clean migration)
+      const adminNewOrdersChannelV2 = AndroidNotificationChannel(
+        'admin_new_orders_v2',
+        'New Orders',
+        description: 'High-priority audio alerts when a new order is received by the store.',
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound('new_order_alert'),
+        enableVibration: true,
+      );
+
+      const adminNewOrdersChannelLegacy = AndroidNotificationChannel(
+        'admin_new_orders',
+        'New Orders Legacy',
+        description: 'Legacy channel for new orders.',
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound('new_order_alert'),
         enableVibration: true,
       );
 
       await androidPlugin.createNotificationChannel(ordersChannel);
       await androidPlugin.createNotificationChannel(promotionsChannel);
       await androidPlugin.createNotificationChannel(adminChannel);
+      await androidPlugin.createNotificationChannel(adminNewOrdersChannelLegacy);
+      await androidPlugin.createNotificationChannel(adminNewOrdersChannelV2);
     }
   }
 
-  // Local foreground message alerting handler
+  /// Local foreground message alerting handler
   void _handleForegroundMessage(RemoteMessage message) {
     final notification = message.notification;
-    if (notification != null) {
-      showLocalNotification(
-        title: notification.title ?? 'Blinkit Alert',
-        body: notification.body ?? '',
-        payload: message.data,
-      );
-    }
+    final title = notification?.title ?? message.data['title']?.toString() ?? 'Tiruttani Quick';
+    final body = notification?.body ?? message.data['body']?.toString() ?? '';
+
+    showLocalNotification(
+      title: title,
+      body: body,
+      payload: message.data,
+    );
   }
 
-  // Display a local banner notification
+  /// Display a local banner notification
   Future<void> showLocalNotification({
     required String title,
     required String body,
     required Map<String, dynamic> payload,
   }) async {
-    final type = payload['type'] ?? 'promotion';
+    final type = payload['type']?.toString() ?? 'promotion';
     String channelId = 'promotions_channel';
     String channelName = 'Promotions';
+    AndroidNotificationSound? soundResource;
 
-    if (type == 'order') {
+    if (type == 'new_order') {
+      channelId = 'admin_new_orders_v2';
+      channelName = 'New Orders';
+      soundResource = const RawResourceAndroidNotificationSound('new_order_alert');
+    } else if (type == 'order' || type == 'order_status') {
       channelId = 'orders_channel';
       channelName = 'Orders';
     } else if (type == 'admin') {
@@ -251,12 +336,19 @@ class NotificationService {
       importance: Importance.max,
       priority: Priority.high,
       icon: '@mipmap/ic_launcher',
+      playSound: true,
+      sound: soundResource,
+      enableVibration: true,
+      ongoing: false,
+      autoCancel: true,
+      audioAttributesUsage: AudioAttributesUsage.notification,
     );
 
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
+      sound: 'new_order_alert.wav',
     );
 
     final details = NotificationDetails(android: androidDetails, iOS: iosDetails);
@@ -271,7 +363,7 @@ class NotificationService {
         payload: payloadStr,
       );
     } catch (e) {
-      debugPrint('Error showing local notification: $e');
+      debugPrint('[NotificationService] Error showing local notification: $e');
     }
   }
 }

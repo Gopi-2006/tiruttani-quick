@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -84,192 +85,240 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           appBar: const CustomAppBar(title: AppStrings.checkoutTitle),
           body: currentUser.firebaseUser == null
               ? const LoadingWidget()
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(AppDimensions.paddingMedium),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+              : StreamBuilder<ShopSettingsModel>(
+                  stream: _firestore.shopSettingsStream(),
+                  builder: (context, snapshot) {
+                    final settings = snapshot.data ?? const ShopSettingsModel();
+                    final isDeliveryAvailable = settings.deliveryAvailable;
+
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+                      child: Form(
+                        key: _formKey,
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            const Text(AppStrings.deliveryAddressHeader, style: TextStyle(fontSize: AppDimensions.fontSizeExtraLarge, fontWeight: FontWeight.bold)),
-                            const SizedBox(height: AppDimensions.spacingNormal),
-                            StreamBuilder<List<AddressModel>>(
-                              stream: _firestore.addressesStream(currentUser.firebaseUser!.uid),
-                              builder: (context, snapshot) {
-                                final addresses = snapshot.data ?? [];
-                                if (addresses.isEmpty) return const Text(Messages.noSavedAddresses);
-                                return Column(
-                                  children: addresses.map((address) {
-                                    return InkWell(
-                                      onTap: () {
-                                        setState(() {
-                                          _selectedAddressId = address.id;
-                                          _addressController.text = address.fullAddress;
-                                          _landmarkController.text = address.landmark;
-                                          _pincodeController.text = address.pincode;
-                                          _phoneController.text = address.phone;
-                                        });
+                            if (!isDeliveryAvailable) ...[
+                              Container(
+                                margin: const EdgeInsets.only(bottom: AppDimensions.spacingMedium),
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFEF2F2),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFFECACA)),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(Icons.remove_shopping_cart_rounded, color: Color(0xFFDC2626), size: 24),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Delivery Currently Unavailable',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF991B1B),
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            settings.deliveryUnavailableMessage.isNotEmpty
+                                                ? settings.deliveryUnavailableMessage
+                                                : 'Our shop is temporarily not accepting new orders. Please try again later.',
+                                            style: const TextStyle(
+                                              color: Color(0xFFB91C1C),
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(AppStrings.deliveryAddressHeader, style: TextStyle(fontSize: AppDimensions.fontSizeExtraLarge, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: AppDimensions.spacingNormal),
+                                    StreamBuilder<List<AddressModel>>(
+                                      stream: _firestore.addressesStream(currentUser.firebaseUser!.uid),
+                                      builder: (context, addressSnapshot) {
+                                        final addresses = addressSnapshot.data ?? [];
+                                        if (addresses.isEmpty) return const Text(Messages.noSavedAddresses);
+                                        return Column(
+                                          children: addresses.map((address) {
+                                            return InkWell(
+                                              onTap: () {
+                                                setState(() {
+                                                  _selectedAddressId = address.id;
+                                                  _addressController.text = address.fullAddress;
+                                                  _landmarkController.text = address.landmark;
+                                                  _pincodeController.text = address.pincode;
+                                                  _phoneController.text = address.phone;
+                                                });
+                                              },
+                                              child: Card(
+                                                margin: const EdgeInsets.only(bottom: AppDimensions.marginSmall),
+                                                color: _selectedAddressId == address.id ? AppColors.primary.withValues(alpha: 0.08) : null,
+                                                child: ListTile(
+                                                  leading: const Icon(AppIcons.location),
+                                                  title: Text(address.label),
+                                                  subtitle: Text(address.fullAddress),
+                                                  trailing: address.isDefault ? const Icon(AppIcons.star, color: AppColors.orange) : null,
+                                                ),
+                                              ),
+                                            );
+                                          }).toList(),
+                                        );
                                       },
-                                      child: Card(
-                                        margin: const EdgeInsets.only(bottom: AppDimensions.marginSmall),
-                                        color: _selectedAddressId == address.id ? AppColors.primary.withValues(alpha: 0.08) : null,
-                                        child: ListTile(
-                                          leading: const Icon(AppIcons.location),
-                                          title: Text(address.label),
-                                          subtitle: Text(address.fullAddress),
-                                          trailing: address.isDefault ? const Icon(AppIcons.star, color: AppColors.orange) : null,
+                                    ),
+                                    const SizedBox(height: AppDimensions.spacingMedium),
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: AppDimensions.spacingSmall),
+                                      child: Text(
+                                        context.translate('fillManuallyNote'),
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          color: AppColors.muted,
+                                          fontStyle: FontStyle.italic,
                                         ),
                                       ),
-                                    );
-                                  }).toList(),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: AppDimensions.spacingMedium),
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: AppDimensions.spacingSmall),
-                              child: Text(
-                                context.translate('fillManuallyNote'),
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppColors.muted,
-                                  fontStyle: FontStyle.italic,
+                                    ),
+                                    CustomTextField(
+                                      controller: _addressController,
+                                      maxLines: 3,
+                                      labelText: Labels.fullAddress,
+                                      prefixIcon: AppIcons.home,
+                                      suffixIcon: IconButton(
+                                        icon: const Icon(AppIcons.myLocation),
+                                        onPressed: _getCurrentLocation,
+                                      ),
+                                      validator: (value) => value == null || value.trim().length < 5 ? ValidationMessages.enterAddress : null,
+                                    ),
+                                    const SizedBox(height: AppDimensions.spacingNormal),
+                                    CustomTextField(
+                                      controller: _landmarkController,
+                                      labelText: Labels.landmark,
+                                      prefixIcon: AppIcons.place,
+                                    ),
+                                    const SizedBox(height: AppDimensions.spacingNormal),
+                                    CustomTextField(
+                                      controller: _pincodeController,
+                                      keyboardType: TextInputType.number,
+                                      labelText: Labels.pincode,
+                                      prefixIcon: AppIcons.pin,
+                                      validator: (value) => value == null || value.trim().length != 6 ? ValidationMessages.enterPincode : null,
+                                    ),
+                                    const SizedBox(height: AppDimensions.spacingNormal),
+                                    CustomTextField(
+                                      controller: _phoneController,
+                                      keyboardType: TextInputType.phone,
+                                      labelText: Labels.phoneNumber,
+                                      prefixIcon: AppIcons.phone,
+                                      validator: (value) => value == null || value.trim().length < 10 ? ValidationMessages.enterPhone : null,
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                            CustomTextField(
-                              controller: _addressController,
-                              maxLines: 3,
-                              labelText: Labels.fullAddress,
-                              prefixIcon: AppIcons.home,
-                              suffixIcon: IconButton(
-                                icon: const Icon(AppIcons.myLocation),
-                                onPressed: _getCurrentLocation,
+                            const SizedBox(height: AppDimensions.spacingMedium),
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Delivery Slot', style: TextStyle(fontSize: AppDimensions.fontSizeExtraLarge, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: AppDimensions.spacingNormal),
+                                    DropdownButtonFormField<String>(
+                                      initialValue: _selectedDeliverySlot,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      ),
+                                      items: const [
+                                        DropdownMenuItem(value: 'Morning (8 AM - 12 PM)', child: Text('Morning (8 AM - 12 PM)')),
+                                        DropdownMenuItem(value: 'Afternoon (12 PM - 4 PM)', child: Text('Afternoon (12 PM - 4 PM)')),
+                                        DropdownMenuItem(value: 'Evening (4 PM - 8 PM)', child: Text('Evening (4 PM - 8 PM)')),
+                                      ],
+                                      onChanged: (val) {
+                                        if (val != null) {
+                                          setState(() {
+                                            _selectedDeliverySlot = val;
+                                          });
+                                        }
+                                      },
+                                    ),
+                                  ],
+                                ),
                               ),
-                              validator: (value) => value == null || value.trim().length < 5 ? ValidationMessages.enterAddress : null,
                             ),
-                            const SizedBox(height: AppDimensions.spacingNormal),
-                            CustomTextField(
-                              controller: _landmarkController,
-                              labelText: Labels.landmark,
-                              prefixIcon: AppIcons.place,
+                            const SizedBox(height: AppDimensions.spacingMedium),
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(AppStrings.paymentMethodHeader, style: TextStyle(fontSize: AppDimensions.fontSizeExtraLarge, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: AppDimensions.spacingNormal),
+                                    RadioGroup<String>(
+                                      groupValue: _paymentMethod,
+                                      onChanged: _setPayment,
+                                      child: Column(
+                                        children: const [
+                                          _PaymentOption(value: PaymentMethods.upi),
+                                          _PaymentOption(value: PaymentMethods.card),
+                                          _PaymentOption(value: PaymentMethods.cod),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                            const SizedBox(height: AppDimensions.spacingNormal),
-                            CustomTextField(
-                              controller: _pincodeController,
-                              keyboardType: TextInputType.number,
-                              labelText: Labels.pincode,
-                              prefixIcon: AppIcons.pin,
-                              validator: (value) => value == null || value.trim().length != 6 ? ValidationMessages.enterPincode : null,
+                            const SizedBox(height: AppDimensions.spacingMedium),
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+                                child: Column(
+                                  children: [
+                                    _SummaryRow(label: AppStrings.itemsHeader, value: '${cartProvider.itemCount}'),
+                                    _SummaryRow(label: AppStrings.subtotalHeader, value: '₹${cartProvider.subtotal.toStringAsFixed(0)}'),
+                                    if (cartProvider.couponDiscount > 0)
+                                      _SummaryRow(
+                                        label: 'Coupon Discount',
+                                        value: '-₹${cartProvider.couponDiscount.toStringAsFixed(0)}',
+                                      ),
+                                    _SummaryRow(label: AppStrings.deliveryFeeHeader, value: cartProvider.deliveryFee == 0 ? AppStrings.freeLabel : '₹${cartProvider.deliveryFee.toStringAsFixed(0)}'),
+                                    const Divider(),
+                                    _SummaryRow(label: AppStrings.totalHeader, value: '₹${cartProvider.total.toStringAsFixed(0)}', bold: true),
+                                  ],
+                                ),
+                              ),
                             ),
-                            const SizedBox(height: AppDimensions.spacingNormal),
-                            CustomTextField(
-                              controller: _phoneController,
-                              keyboardType: TextInputType.phone,
-                              labelText: Labels.phoneNumber,
-                              prefixIcon: AppIcons.phone,
-                              validator: (value) => value == null || value.trim().length < 10 ? ValidationMessages.enterPhone : null,
+                            const SizedBox(height: AppDimensions.spacingLarge),
+                            CustomButton(
+                              onPressed: (_loading || !isDeliveryAvailable) ? null : _placeOrder,
+                              text: isDeliveryAvailable ? ButtonTexts.placeOrder : 'Delivery Unavailable',
+                              loading: _loading,
                             ),
                           ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: AppDimensions.spacingMedium),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(AppDimensions.paddingMedium),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Select Delivery Slot',
-                              style: TextStyle(fontSize: AppDimensions.fontSizeExtraLarge, fontWeight: FontWeight.bold, color: AppColors.text),
-                            ),
-                            const SizedBox(height: AppDimensions.spacingNormal),
-                            DropdownButtonFormField<String>(
-                            initialValue: _selectedDeliverySlot,
-                              decoration: InputDecoration(
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              ),
-                              items: const [
-                                DropdownMenuItem(value: 'Morning (8 AM - 12 PM)', child: Text('Morning (8 AM - 12 PM)')),
-                                DropdownMenuItem(value: 'Afternoon (12 PM - 4 PM)', child: Text('Afternoon (12 PM - 4 PM)')),
-                                DropdownMenuItem(value: 'Evening (4 PM - 8 PM)', child: Text('Evening (4 PM - 8 PM)')),
-                              ],
-                              onChanged: (val) {
-                                if (val != null) {
-                                  setState(() {
-                                    _selectedDeliverySlot = val;
-                                  });
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AppDimensions.spacingMedium),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(AppDimensions.paddingMedium),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(AppStrings.paymentMethodHeader, style: TextStyle(fontSize: AppDimensions.fontSizeExtraLarge, fontWeight: FontWeight.bold)),
-                            const SizedBox(height: AppDimensions.spacingNormal),
-                            RadioGroup<String>(
-                              groupValue: _paymentMethod,
-                              onChanged: _setPayment,
-                              child: Column(
-                                children: const [
-                                  _PaymentOption(value: PaymentMethods.upi),
-                                  _PaymentOption(value: PaymentMethods.card),
-                                  _PaymentOption(value: PaymentMethods.cod),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AppDimensions.spacingMedium),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(AppDimensions.paddingMedium),
-                        child: Column(
-                          children: [
-                            _SummaryRow(label: AppStrings.itemsHeader, value: '${cartProvider.itemCount}'),
-                            _SummaryRow(label: AppStrings.subtotalHeader, value: '₹${cartProvider.subtotal.toStringAsFixed(0)}'),
-                            if (cartProvider.couponDiscount > 0)
-                              _SummaryRow(
-                                label: 'Coupon Discount',
-                                value: '-₹${cartProvider.couponDiscount.toStringAsFixed(0)}',
-                              ),
-                            _SummaryRow(label: AppStrings.deliveryFeeHeader, value: cartProvider.deliveryFee == 0 ? AppStrings.freeLabel : '₹${cartProvider.deliveryFee.toStringAsFixed(0)}'),
-                            const Divider(),
-                            _SummaryRow(label: AppStrings.totalHeader, value: '₹${cartProvider.total.toStringAsFixed(0)}', bold: true),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AppDimensions.spacingLarge),
-                    CustomButton(
-                      onPressed: _loading ? null : _placeOrder,
-                      text: ButtonTexts.placeOrder,
-                      loading: _loading,
-                    ),
-                  ],
+                    );
+                  },
                 ),
-              ),
-            ),
         ),
         if (_showSuccessOverlay)
           OrderSuccessOverlay(
@@ -288,7 +337,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _setPayment(String? value) {
-    if (value != null) setState(() => _paymentMethod = value);
+    if (value == null) return;
+    if (value != PaymentMethods.cod) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Online payment is coming soon. Please choose Cash / UPI on Delivery.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      setState(() => _paymentMethod = PaymentMethods.cod);
+      return;
+    }
+    setState(() => _paymentMethod = value);
   }
 
   Future<void> _getCurrentLocation() async {
@@ -335,6 +395,37 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     setState(() => _loading = true);
 
+    // 1. Pre-flight verification: Direct fresh read of shop delivery availability
+    try {
+      final currentSettings = await _firestore.getShopSettings();
+      if (!currentSettings.deliveryAvailable) {
+        if (!mounted) return;
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              currentSettings.deliveryUnavailableMessage.isNotEmpty
+                  ? currentSettings.deliveryUnavailableMessage
+                  : 'Delivery is currently unavailable. Please try again later.',
+            ),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        return;
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to verify delivery availability. Please check your internet connection and try again.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     try {
       final paymentSuccess = await _paymentService.pay(
         method: _paymentMethod,
@@ -351,16 +442,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final db = FirebaseFirestore.instance;
       final orderRef = db.collection('orders').doc();
       final now = DateTime.now();
-      final orderNumber = 'CG${now.millisecond}${now.second}${now.minute}';
+      final orderNumber = 'TQ${now.year.toString().substring(2)}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}${(100 + Random().nextInt(900))}';
       final subtotal = cartProvider.subtotal;
       final deliveryFee = cartProvider.deliveryFee;
       final total = cartProvider.total;
+      final notes = 'Slot: $_selectedDeliverySlot${cartProvider.couponCode.isNotEmpty ? ' | Coupon: ${cartProvider.couponCode}' : ''}';
       String deliveryAddressId;
 
       int totalProductsSold = 0;
       double totalDiscountAmount = 0.0;
 
       await db.runTransaction((transaction) async {
+        // 2. Race condition protection: In-transaction atomic verification of delivery availability
+        final settingsDocRef = db.collection('shop_settings').doc('config');
+        final settingsDoc = await transaction.get(settingsDocRef);
+        if (settingsDoc.exists && settingsDoc.data() != null) {
+          final isDeliveryAllowed = settingsDoc.data()!['deliveryAvailable'] as bool? ?? true;
+          if (!isDeliveryAllowed) {
+            final msg = settingsDoc.data()!['deliveryUnavailableMessage'] as String? ??
+                'Delivery is currently unavailable. Please try again later.';
+            throw Exception(msg);
+          }
+        }
+
         DocumentSnapshot? addressDoc;
         if (_selectedAddressId != null) {
           final addressDocRef = db.collection('addresses').doc(_selectedAddressId);
@@ -422,6 +526,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           status: OrderStatuses.pending,
           statusIndex: OrderStatuses.index(OrderStatuses.pending),
           eta: now.add(const Duration(minutes: 30)),
+          notes: notes,
           verificationCode: Helpers.generateVerificationCode(),
         );
 
@@ -532,6 +637,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           orderId: orderRef.id,
         );
       }
+
+      // Dispatch Push Notification to all Admin devices via Cloudflare Worker (FCM HTTP v1)
+      NotificationSenderService.instance.sendNewOrderNotificationToAdmins(
+        orderId: orderRef.id,
+        orderNumber: orderNumber,
+        totalAmount: total,
+        customerName: customerName,
+      );
+
       if (!mounted) return;
       setState(() {
         _showSuccessOverlay = true;
@@ -553,9 +667,18 @@ class _PaymentOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    String label = value;
+    if (value == PaymentMethods.cod) {
+      label = 'Cash / UPI on Delivery';
+    } else if (value == PaymentMethods.upi) {
+      label = 'Online UPI (Coming Soon)';
+    } else if (value == PaymentMethods.card) {
+      label = 'Credit / Debit Card (Coming Soon)';
+    }
+
     return RadioListTile<String>(
       contentPadding: EdgeInsets.zero,
-      title: Text(value == PaymentMethods.cod ? 'Cash/UPI on Delivery' : value),
+      title: Text(label),
       value: value,
     );
   }

@@ -1,9 +1,11 @@
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/widgets/custom_app_bar.dart';
 import '../../../core/widgets/loading_widget.dart';
@@ -60,251 +62,286 @@ class OrderTrackingScreen extends StatelessWidget {
     }
   }
 
+  void _handleBack(BuildContext context) {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    } else {
+      context.go(AppRoutes.home);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppBar(title: AppStrings.orderTrackingTitle),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('orders').doc(orderId).snapshots(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) return const LoadingWidget();
-          if (!snapshot.data!.exists) return const Center(child: Text('Order not found'));
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleBack(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppBar(
+          title: AppStrings.orderTrackingTitle,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Back',
+            onPressed: () => _handleBack(context),
+          ),
+        ),
+        body: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('orders').doc(orderId).snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return const LoadingWidget();
+            if (!snapshot.data!.exists) return const Center(child: Text('Order not found'));
 
-          final order = OrderModel.fromFirestore(snapshot.data!.id, snapshot.data!.data() as Map<String, dynamic>);
-          final bool isCancelable = order.status == OrderStatuses.pending ||
-              order.status == OrderStatuses.confirmed ||
-              order.status == OrderStatuses.packed;
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(AppDimensions.paddingMedium),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppDimensions.paddingMedium),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(order.orderNumber, style: const TextStyle(fontSize: AppDimensions.fontSizeHeader, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 4),
-                        Text(order.formattedPlacedAt, style: const TextStyle(color: AppColors.muted)),
-                        const SizedBox(height: AppDimensions.spacingMedium),
-                        _StatusStepper(order: order),
-                      ],
-                    ),
+            final order = OrderModel.fromFirestore(snapshot.data!.id, snapshot.data!.data() as Map<String, dynamic>);
+            final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+            if (currentUserId != null && order.customerId.isNotEmpty && order.customerId != currentUserId) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(AppDimensions.paddingLarge),
+                  child: Text(
+                    'Unauthorized: This order belongs to another account.',
+                    style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
                   ),
                 ),
-                if (isCancelable) ...[
-                  const SizedBox(height: AppDimensions.spacingMedium),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _startCancelFlow(context, order),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.error,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusNormal),
-                        ),
-                      ),
-                      icon: const Icon(Icons.cancel_outlined),
-                      label: const Text(
-                        'Cancel Order',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                ],
-                if (order.status == OrderStatuses.cancelled) ...[
-                  const SizedBox(height: AppDimensions.spacingMedium),
+              );
+            }
+            final bool isCancelable = order.status == OrderStatuses.pending ||
+                order.status == OrderStatuses.confirmed ||
+                order.status == OrderStatuses.packed;
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Card(
-                    color: AppColors.error.withValues(alpha: 0.08),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: const BorderSide(color: AppColors.error, width: 1),
-                    ),
                     child: Padding(
                       padding: const EdgeInsets.all(AppDimensions.paddingMedium),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.error_outline, color: AppColors.error),
-                              SizedBox(width: 8),
-                              Text(
-                                'Order Cancelled',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.error,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          _SummaryRow(
-                            label: 'Reason',
-                            value: order.cancellationReason ?? 'Not specified',
-                          ),
-                          _SummaryRow(
-                            label: 'Cancelled By',
-                            value: order.cancelledBy ?? 'Customer',
-                          ),
-                          _SummaryRow(
-                            label: 'Cancelled At',
-                            value: order.cancelledAt != null
-                                ? DateFormat('dd MMM, hh:mm a').format(order.cancelledAt!)
-                                : 'N/A',
-                          ),
-                          if (order.paymentMethod != 'COD') ...[
-                            _SummaryRow(
-                              label: 'Refund Status',
-                              value: order.refundStatus ?? 'Refund Pending',
-                            ),
-                          ],
+                          Text(order.orderNumber, style: const TextStyle(fontSize: AppDimensions.fontSizeHeader, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 4),
+                          Text(order.formattedPlacedAt, style: const TextStyle(color: AppColors.muted)),
+                          const SizedBox(height: AppDimensions.spacingMedium),
+                          _StatusStepper(order: order),
                         ],
                       ),
                     ),
                   ),
-                ],
-                if (order.status == OrderStatuses.outForDelivery || order.status == OrderStatuses.delivered) ...[
-                  const SizedBox(height: AppDimensions.spacingMedium),
-                  Card(
-                    color: AppColors.primary.withValues(alpha: 0.08),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLarge),
-                      side: const BorderSide(color: AppColors.primary, width: 1.5),
+                  if (isCancelable) ...[
+                    const SizedBox(height: AppDimensions.spacingMedium),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _startCancelFlow(context, order),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.error,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusNormal),
+                          ),
+                        ),
+                        icon: const Icon(Icons.cancel_outlined),
+                        label: const Text(
+                          'Cancel Order',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppDimensions.paddingMedium),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(AppIcons.vpnKey, color: AppColors.primary),
-                              const SizedBox(width: AppDimensions.spacingSmall),
-                              Expanded(
-                                child: Text(
-                                  Messages.deliveryVerificationCodeHeader,
-                                  style: const TextStyle(
-                                    fontSize: AppDimensions.fontSizeLarge,
+                  ],
+                  if (order.status == OrderStatuses.cancelled) ...[
+                    const SizedBox(height: AppDimensions.spacingMedium),
+                    Card(
+                      color: AppColors.error.withValues(alpha: 0.08),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: const BorderSide(color: AppColors.error, width: 1),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.error_outline, color: AppColors.error),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Order Cancelled',
+                                  style: TextStyle(
+                                    fontSize: 16,
                                     fontWeight: FontWeight.bold,
-                                    color: AppColors.primary,
+                                    color: AppColors.error,
                                   ),
                                 ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            _SummaryRow(
+                              label: 'Reason',
+                              value: order.cancellationReason ?? 'Not specified',
+                            ),
+                            _SummaryRow(
+                              label: 'Cancelled By',
+                              value: order.cancelledBy ?? 'Customer',
+                            ),
+                            _SummaryRow(
+                              label: 'Cancelled At',
+                              value: order.cancelledAt != null
+                                  ? DateFormat('dd MMM, hh:mm a').format(order.cancelledAt!)
+                                  : 'N/A',
+                            ),
+                            if (order.paymentMethod != 'COD') ...[
+                              _SummaryRow(
+                                label: 'Refund Status',
+                                value: order.refundStatus ?? 'Refund Pending',
                               ),
                             ],
-                          ),
-                          const SizedBox(height: AppDimensions.spacingNormal),
-                          Center(
-                            child: Text(
-                              order.verificationCode,
-                              style: const TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 6,
-                                color: AppColors.text,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: AppDimensions.spacingSmall),
-                          const Text(
-                            Messages.provideVerificationCodePrompt,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: AppDimensions.fontSizeSmall,
-                              color: AppColors.muted,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
-                if (order.status == OrderStatuses.delivered) ...[
+                  ],
+                  if (order.status == OrderStatuses.outForDelivery || order.status == OrderStatuses.delivered) ...[
+                    const SizedBox(height: AppDimensions.spacingMedium),
+                    Card(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLarge),
+                        side: const BorderSide(color: AppColors.primary, width: 1.5),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(AppIcons.vpnKey, color: AppColors.primary),
+                                const SizedBox(width: AppDimensions.spacingSmall),
+                                Expanded(
+                                  child: Text(
+                                    Messages.deliveryVerificationCodeHeader,
+                                    style: const TextStyle(
+                                      fontSize: AppDimensions.fontSizeLarge,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: AppDimensions.spacingNormal),
+                            Center(
+                              child: Text(
+                                order.verificationCode,
+                                style: const TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 6,
+                                  color: AppColors.text,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: AppDimensions.spacingSmall),
+                            const Text(
+                              Messages.provideVerificationCodePrompt,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: AppDimensions.fontSizeSmall,
+                                color: AppColors.muted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (order.status == OrderStatuses.delivered) ...[
+                    const SizedBox(height: AppDimensions.spacingMedium),
+                    Card(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLarge),
+                        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.38), width: 1),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.star, color: Colors.amber, size: 28),
+                                Icon(Icons.star, color: Colors.amber, size: 28),
+                                Icon(Icons.star, color: Colors.amber, size: 28),
+                                Icon(Icons.star, color: Colors.amber, size: 28),
+                                Icon(Icons.star, color: Colors.amber, size: 28),
+                              ],
+                            ),
+                            const SizedBox(height: AppDimensions.spacingSmall),
+                            const Text(
+                              'How was your experience?',
+                              style: TextStyle(
+                                fontSize: AppDimensions.fontSizeLarge,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Your feedback helps us make Quick Grocery better!',
+                              style: TextStyle(
+                                color: AppColors.muted,
+                                fontSize: AppDimensions.fontSizeSmall,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: AppDimensions.spacingMedium),
+                            ElevatedButton.icon(
+                              onPressed: () => _launchReviewForm(context),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(AppDimensions.borderRadiusNormal),
+                                ),
+                              ),
+                              icon: const Icon(Icons.rate_review, size: 18),
+                              label: const Text('Write a Review'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: AppDimensions.spacingMedium),
                   Card(
-                    color: AppColors.primary.withValues(alpha: 0.12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLarge),
-                      side: BorderSide(color: AppColors.primary.withValues(alpha: 0.38), width: 1),
-                    ),
                     child: Padding(
                       padding: const EdgeInsets.all(AppDimensions.paddingMedium),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.star, color: Colors.amber, size: 28),
-                              Icon(Icons.star, color: Colors.amber, size: 28),
-                              Icon(Icons.star, color: Colors.amber, size: 28),
-                              Icon(Icons.star, color: Colors.amber, size: 28),
-                              Icon(Icons.star, color: Colors.amber, size: 28),
-                            ],
-                          ),
-                          const SizedBox(height: AppDimensions.spacingSmall),
-                          const Text(
-                            'How was your experience?',
-                            style: TextStyle(
-                              fontSize: AppDimensions.fontSizeLarge,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Your feedback helps us make Quick Grocery better!',
-                            style: TextStyle(
-                              color: AppColors.muted,
-                              fontSize: AppDimensions.fontSizeSmall,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: AppDimensions.spacingMedium),
-                          ElevatedButton.icon(
-                            onPressed: () => _launchReviewForm(context),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(AppDimensions.borderRadiusNormal),
-                              ),
-                            ),
-                            icon: const Icon(Icons.rate_review, size: 18),
-                            label: const Text('Write a Review'),
-                          ),
+                          const Text(AppStrings.orderSummaryHeader, style: TextStyle(fontSize: AppDimensions.fontSizeExtraLarge, fontWeight: FontWeight.bold)),
+                          const Divider(),
+                          _SummaryRow(label: Labels.payment, value: order.paymentMethod == 'COD' ? 'Cash/UPI on Delivery' : order.paymentMethod),
+                          _SummaryRow(label: Labels.paymentStatus, value: order.paymentStatus),
+                          _SummaryRow(label: AppStrings.totalHeader, value: '₹${order.totalPrice.toStringAsFixed(0)}'),
+                          _SummaryRow(label: Labels.eta, value: order.eta != null ? 'Around ${order.eta!.hour}:${order.eta!.minute.toString().padLeft(2, '0')}' : '30 min'),
                         ],
                       ),
                     ),
                   ),
                 ],
-                const SizedBox(height: AppDimensions.spacingMedium),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppDimensions.paddingMedium),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(AppStrings.orderSummaryHeader, style: TextStyle(fontSize: AppDimensions.fontSizeExtraLarge, fontWeight: FontWeight.bold)),
-                        const Divider(),
-                        _SummaryRow(label: Labels.payment, value: order.paymentMethod == 'COD' ? 'Cash/UPI on Delivery' : order.paymentMethod),
-                        _SummaryRow(label: Labels.paymentStatus, value: order.paymentStatus),
-                        _SummaryRow(label: AppStrings.totalHeader, value: '₹${order.totalPrice.toStringAsFixed(0)}'),
-                        _SummaryRow(label: Labels.eta, value: order.eta != null ? 'Around ${order.eta!.hour}:${order.eta!.minute.toString().padLeft(2, '0')}' : '30 min'),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
+              ),
+            );
+          },
+        ),
       ),
     );
   }

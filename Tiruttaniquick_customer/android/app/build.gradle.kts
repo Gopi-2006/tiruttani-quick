@@ -95,3 +95,13 @@ flutter {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
 }
+
+// Exclude SafetyNet — deprecated and flagged by Play Console.
+// firebase_app_check Flutter plugin pulls firebase-appcheck-safetynet as a transitive
+// dependency even when only AndroidProvider.playIntegrity is activated at runtime.
+// These exclusions remove the SafetyNet JAR from the release classpath entirely.
+// firebase-appcheck-playintegrity:18.0.0 remains in the classpath and is used at runtime.
+configurations.all {
+    exclude(group = "com.google.firebase", module = "firebase-appcheck-safetynet")
+    exclude(group = "com.google.android.gms", module = "play-services-safetynet")
+}

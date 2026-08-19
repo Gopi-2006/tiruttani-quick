@@ -178,9 +178,17 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       if (!mounted) return;
       if (!seenOnboarding) {
         context.go(AppRoutes.onboarding);
-      } else {
-        context.go(AppRoutes.home);
+        return;
       }
+
+      // Check if user launched the app by tapping a notification
+      final pendingRoute = startupProvider.consumePendingNotificationRoute();
+      if (pendingRoute != null && pendingRoute.isNotEmpty) {
+        context.go(pendingRoute);
+        return;
+      }
+
+      context.go(AppRoutes.home);
     } catch (e) {
       debugPrint('[Splash] Navigation error: $e');
       if (mounted) {

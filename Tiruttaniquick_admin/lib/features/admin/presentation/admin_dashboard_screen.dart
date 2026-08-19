@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:excel/excel.dart' hide Border, TextSpan;
 import 'package:intl/intl.dart';
@@ -22,6 +21,135 @@ import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/loading_widget.dart';
 
 
+
+class AdminDeliveryAvailabilityButton extends StatelessWidget {
+  const AdminDeliveryAvailabilityButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final firestore = context.read<FirestoreService>();
+    return StreamBuilder<ShopSettingsModel>(
+      stream: firestore.shopSettingsStream(),
+      builder: (context, snapshot) {
+        final settings = snapshot.data ?? const ShopSettingsModel();
+        final isAvailable = settings.deliveryAvailable;
+
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () => _toggleDeliveryAvailability(context, firestore, isAvailable, settings),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: isAvailable
+                      ? const Color(0xFF10B981).withValues(alpha: 0.12)
+                      : const Color(0xFFEF4444).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isAvailable ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: isAvailable ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      isAvailable ? '🟢 Delivery ON' : '🔴 Delivery OFF',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: isAvailable ? const Color(0xFF065F46) : const Color(0xFF991B1B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _toggleDeliveryAvailability(
+    BuildContext context,
+    FirestoreService firestore,
+    bool currentStatus,
+    ShopSettingsModel settings,
+  ) async {
+    final nextStatus = !currentStatus;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(nextStatus ? 'Turn on delivery?' : 'Turn off delivery?'),
+        content: Text(
+          nextStatus
+              ? 'Customers will be able to place new orders.'
+              : 'Customers will not be able to place new orders while delivery is unavailable.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: nextStatus ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: Text(nextStatus ? 'Turn On Delivery' : 'Turn Off Delivery'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && context.mounted) {
+      try {
+        await firestore.updateDeliveryAvailability(
+          deliveryAvailable: nextStatus,
+          adminUid: user.uid,
+          unavailableMessage: settings.deliveryUnavailableMessage,
+        );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(nextStatus ? 'Delivery is now available.' : 'Delivery is now unavailable.'),
+              backgroundColor: nextStatus ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to update delivery status: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+}
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -50,18 +178,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         final accepted = await _showPrivacyPolicyDialog(context);
         _isDialogShowing = false;
         if (accepted) {
-          setState(() {
-            userProvider.privacyPolicyAccepted = true;
-          });
+          await userProvider.setPrivacyPolicyAccepted(true);
         } else {
-          final user = FirebaseAuth.instance.currentUser;
-          if (user != null) {
-            await NotificationService.instance.clearToken(user.uid);
-          }
-          await AuthRepository().signOut();
-          if (mounted) {
-            context.go(AppRoutes.login);
-          }
+          // Never log out the admin user when privacy dialog is declined or dismissed!
+          // The Firebase session remains fully intact.
+          debugPrint('[AdminDashboard] Privacy policy pending acceptance.');
         }
       });
     }
@@ -69,7 +190,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Future<bool> _showPrivacyPolicyDialog(BuildContext context) async {
     bool accepted = false;
-    await showDialog(
+    final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (context) {
@@ -123,12 +244,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(context, false),
                   child: const Text('Decline'),
                 ),
                 ElevatedButton(
                   onPressed: accepted
-                      ? () => Navigator.pop(context)
+                      ? () => Navigator.pop(context, true)
                       : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
@@ -143,7 +264,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         );
       },
     );
-    return accepted;
+    return result ?? false;
   }
 
   @override
@@ -167,6 +288,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               actions: [
+                const AdminDeliveryAvailabilityButton(),
                 if (_currentTab == 1)
                   IconButton(
                     icon: const Icon(Icons.delete_sweep_outlined, color: Colors.red),
@@ -230,6 +352,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       await NotificationService.instance.clearToken(user.uid);
                     }
                     await AuthRepository().signOut();
+                    currentUserProvider.reset();
                     if (context.mounted) {
                       context.go(AppRoutes.login);
                     }
@@ -551,14 +674,6 @@ class _OrdersTabState extends State<_OrdersTab> {
     return doc.data()?['customerId'] as String?;
   }
 
-  void _playNotificationSound() {
-    try {
-      FlutterRingtonePlayer().playNotification();
-    } catch (e) {
-      debugPrint('Error playing ringtone: $e');
-    }
-  }
-
   Widget _buildOrderList(List<OrderModel> ordersList) {
     if (ordersList.isEmpty) {
       return const Center(
@@ -583,13 +698,23 @@ class _OrdersTabState extends State<_OrdersTab> {
           firestore: widget.firestore,
           onChangeStatus: (status) async {
             if (status == null) return;
-            final customerId = await _getCustomerId(order.id);
-            if (customerId != null && customerId.isNotEmpty) {
+            final customerId = order.customerId.isNotEmpty
+                ? order.customerId
+                : (await _getCustomerId(order.id) ?? '');
+            if (customerId.isNotEmpty) {
               await widget.firestore.createNotification(
                 userId: customerId,
                 title: 'Order Status Updated',
                 body: 'Order #${order.orderNumber} is now $status',
                 orderId: order.id,
+              );
+
+              // Dispatch Push Notification via Cloudflare Worker (FCM HTTP v1)
+              NotificationSenderService.instance.sendOrderStatusNotification(
+                orderId: order.id,
+                orderNumber: order.orderNumber,
+                customerId: customerId,
+                status: status,
               );
             }
 
@@ -638,7 +763,6 @@ class _OrdersTabState extends State<_OrdersTab> {
           final newIds = currentIds.difference(_knownOrderIds!);
           if (newIds.isNotEmpty) {
             _knownOrderIds!.addAll(newIds);
-            _playNotificationSound();
           }
         }
 
@@ -3809,6 +3933,7 @@ class _CatalogTabState extends State<_CatalogTab> with SingleTickerProviderState
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          const AdminDeliveryAvailabilityButton(),
           if (_tabController.index == 0) ...[
             IconButton(
               icon: const Icon(Icons.delete_sweep_outlined, color: Colors.red),
@@ -3830,6 +3955,7 @@ class _CatalogTabState extends State<_CatalogTab> with SingleTickerProviderState
                 await NotificationService.instance.clearToken(user.uid);
               }
               await AuthRepository().signOut();
+              currentUserProvider.reset();
               if (context.mounted) {
                 context.go(AppRoutes.login);
               }

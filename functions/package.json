@@ -1,7 +1,8 @@
 {
   "name": "functions",
-  "description": "Firebase Cloud Functions for Blinkit Grocery Platform",
+  "description": "Firebase Cloud Functions for Tiruttani Quick",
   "scripts": {
+    "test": "node --test test/*.test.js",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",

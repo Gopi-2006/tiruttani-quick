@@ -11,6 +11,7 @@ import '../models/banner_model.dart';
 import '../models/offer_model.dart';
 import '../models/flash_sale_model.dart';
 import '../models/coupon_model.dart';
+import '../models/shop_settings_model.dart';
 import 'product_search_engine.dart';
 
 class FirestoreService {
@@ -173,10 +174,9 @@ class FirestoreService {
     });
   }
 
-  Stream<List<OrderModel>> adminOrdersStream({int limit = 100}) {
+  Stream<List<OrderModel>> adminOrdersStream({int limit = 200}) {
     return _db
         .collection('orders')
-        .orderBy('placedAt', descending: true)
         .limit(limit)
         .snapshots()
         .map((snapshot) {
@@ -184,9 +184,9 @@ class FirestoreService {
           .map((doc) => OrderModel.fromFirestore(doc.id, doc.data()))
           .toList();
       orders.sort((a, b) {
-        final statusCompare = a.statusIndex.compareTo(b.statusIndex);
-        if (statusCompare != 0) return statusCompare;
-        return (b.placedAt ?? DateTime.fromMillisecondsSinceEpoch(0)).compareTo(a.placedAt ?? DateTime.fromMillisecondsSinceEpoch(0));
+        final aTime = a.placedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime = b.placedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bTime.compareTo(aTime);
       });
       return orders;
     });
@@ -591,5 +591,47 @@ class FirestoreService {
     return _db.collection('banner_analytics').snapshots().map((snapshot) {
       return snapshot.docs.map((doc) => {'id': doc.id, ...doc.data()}).toList();
     });
+  }
+
+  /// Real-time stream of central shop settings (delivery availability, messages)
+  Stream<ShopSettingsModel> shopSettingsStream() {
+    return _db.collection('shop_settings').doc('config').snapshots().map((snap) {
+      if (!snap.exists || snap.data() == null) {
+        return const ShopSettingsModel();
+      }
+      return ShopSettingsModel.fromFirestore(snap.data());
+    });
+  }
+
+  /// Fresh direct fetch of central shop settings (used for checkout verification)
+  Future<ShopSettingsModel> getShopSettings() async {
+    try {
+      final snap = await _db
+          .collection('shop_settings')
+          .doc('config')
+          .get()
+          .timeout(const Duration(seconds: 5));
+      if (!snap.exists || snap.data() == null) {
+        return const ShopSettingsModel();
+      }
+      return ShopSettingsModel.fromFirestore(snap.data());
+    } catch (_) {
+      rethrow;
+    }
+  }
+
+  /// Admin method to toggle delivery availability and set optional custom closed message
+  Future<void> updateDeliveryAvailability({
+    required bool deliveryAvailable,
+    String? unavailableMessage,
+    required String adminUid,
+  }) async {
+    await _db.collection('shop_settings').doc('config').set({
+      'deliveryAvailable': deliveryAvailable,
+      if (unavailableMessage != null && unavailableMessage.isNotEmpty)
+        'deliveryUnavailableMessage': unavailableMessage,
+      'updatedAt': FieldValue.serverTimestamp(),
+      'updatedBy': adminUid,
+    }, SetOptions(merge: true));
   }
 }

@@ -20,6 +20,13 @@ class CurrentUserProvider extends ChangeNotifier {
   bool get isAuthenticated => _firebaseUser != null;
   String get role => _profile?.role ?? '';
 
+  CurrentUserProvider() {
+    _firebaseUser = _auth.currentUser;
+    if (_firebaseUser != null) {
+      NotificationService.instance.setupUser(_firebaseUser!.uid, 'customer');
+    }
+  }
+
   void init() {
     _subscription ??= _auth.authStateChanges().listen((user) async {
       _firebaseUser = user;
@@ -29,6 +36,9 @@ class CurrentUserProvider extends ChangeNotifier {
         notifyListeners();
         return;
       }
+
+      // Always setup notifications for the authenticated customer immediately
+      NotificationService.instance.setupUser(user.uid, 'customer');
 
       // Keep router gated while profile document is loaded and validated
       _loading = true;
@@ -55,7 +65,6 @@ class CurrentUserProvider extends ChangeNotifier {
         }
 
         _profile = profile;
-        NotificationService.instance.setupUser(user.uid, profile?.role ?? 'customer');
       } catch (e) {
         debugPrint('[CurrentUserProvider] Error loading user profile: $e');
         _profile = null;

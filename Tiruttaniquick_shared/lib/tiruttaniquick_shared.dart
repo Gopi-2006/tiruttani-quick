@@ -32,6 +32,7 @@ export 'models/banner_model.dart';
 export 'models/offer_model.dart';
 export 'models/flash_sale_model.dart';
 export 'models/coupon_model.dart';
+export 'models/shop_settings_model.dart';
 
 // Services
 export 'services/auth_repository.dart';
@@ -39,9 +40,11 @@ export 'services/firestore_service.dart';
 export 'services/payment_service.dart';
 export 'services/secure_storage_service.dart';
 export 'services/notification_service.dart';
+export 'services/notification_sender_service.dart';
 export 'services/connectivity_provider.dart';
 export 'services/offer_engine.dart';
 export 'services/product_search_engine.dart';
+export 'package:shared_preferences/shared_preferences.dart';
 
 // Widgets
 export 'widgets/category_card.dart';

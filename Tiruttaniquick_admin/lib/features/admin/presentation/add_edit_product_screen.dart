@@ -942,6 +942,37 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                           children: [
                             const Text('Main Image', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                             const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _imageUrlController,
+                              onChanged: (_) => setState(() {}),
+                              decoration: InputDecoration(
+                                labelText: 'Main Image URL (Paste URL or Upload below)*',
+                                hintText: 'https://images.unsplash.com/...',
+                                prefixIcon: const Icon(Icons.link_rounded),
+                                suffixIcon: _imageUrlController.text.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear, size: 18),
+                                        onPressed: () => setState(() => _imageUrlController.clear()),
+                                      )
+                                    : null,
+                                filled: true,
+                                fillColor: const Color(0xFFF8FAFC),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide(color: Colors.grey.shade200),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide(color: Colors.grey.shade100),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: const BorderSide(color: Color(0xFF16A34A), width: 1.5),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
                             _imageUrlController.text.isNotEmpty
                                 ? Stack(
                                     children: [
@@ -952,6 +983,19 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                           height: 150,
                                           width: double.infinity,
                                           fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) => Container(
+                                            height: 120,
+                                            width: double.infinity,
+                                            color: Colors.grey.shade100,
+                                            child: const Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(Icons.broken_image_outlined, size: 36, color: Colors.orange),
+                                                SizedBox(height: 4),
+                                                Text('Invalid or Unreachable Image URL', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                              ],
+                                            ),
+                                          ),
                                         ),
                                       ),
                                       Positioned(
@@ -970,7 +1014,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                   )
                                 : Container(
                                     width: double.infinity,
-                                    height: 120,
+                                    height: 100,
                                     decoration: BoxDecoration(
                                       color: Colors.grey.shade50,
                                       borderRadius: BorderRadius.circular(16),
@@ -982,9 +1026,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                       child: Column(
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
-                                          Icon(Icons.add_photo_alternate_outlined, size: 40, color: Colors.grey.shade400),
-                                          const SizedBox(height: 8),
-                                          Text('Upload Main Image', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                                          Icon(Icons.add_photo_alternate_outlined, size: 36, color: Colors.grey.shade400),
+                                          const SizedBox(height: 4),
+                                          Text('Or Upload Main Image File', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
                                         ],
                                       ),
                                     ),

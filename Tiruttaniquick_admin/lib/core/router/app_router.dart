@@ -12,18 +12,22 @@ final router = GoRouter(
   refreshListenable: currentUserProvider,
   redirect: (context, state) {
     final location = state.matchedLocation;
-    if (location == '/splash') return null;
-
     final currentUser = currentUserProvider;
-    if (currentUser.loading) return null;
 
-    if (!currentUser.isAuthenticated) {
-      return AppRoutes.login;
+    // While resolving initial auth and profile state, stay on splash screen
+    if (currentUser.loading) {
+      return location == '/splash' ? null : '/splash';
     }
 
-    // Authenticated users
+    final isAuthenticated = currentUser.isAuthenticated;
 
-    if (location == AppRoutes.login) {
+    // Unauthenticated user -> Route to Login screen
+    if (!isAuthenticated) {
+      return location == AppRoutes.login ? null : AppRoutes.login;
+    }
+
+    // Authenticated user -> Route directly to Admin Dashboard
+    if (location == '/splash' || location == AppRoutes.login) {
       return AppRoutes.admin;
     }
 
