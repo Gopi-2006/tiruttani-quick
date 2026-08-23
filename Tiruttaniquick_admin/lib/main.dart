@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/new_order_banner.dart';
 import 'features/admin/presentation/admin_dashboard_screen.dart';
 import 'services/current_user_provider.dart';
 import 'firebase_options.dart';
@@ -22,6 +23,19 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
+    }
+    if (message.data['type'] == 'new_order') {
+      final orderId = message.data['orderId']?.toString() ?? '';
+      if (orderId.isNotEmpty) {
+        NewOrderAlertManager.instance.handleNewOrderReceived(
+          orderId: orderId,
+          orderNumber: message.data['orderNumber']?.toString(),
+          totalAmount: double.tryParse(message.data['totalAmount']?.toString() ?? '0'),
+          customerName: message.data['customerName']?.toString(),
+          customerId: message.data['customerId']?.toString(),
+          rawPayload: message.data,
+        );
+      }
     }
   } catch (e) {
     debugPrint('[Admin Background Messaging Error] $e');
@@ -103,6 +117,13 @@ void _initializeBackgroundServices() async {
       onNotificationTap: (payload) {
         debugPrint('[Admin Main] Notification Tapped: $payload');
         final orderId = payload['orderId']?.toString() ?? '';
+        // Immediately turn off repeating alert sound!
+        if (orderId.isNotEmpty) {
+          NewOrderAlertManager.instance.acknowledgeOrder(orderId);
+        } else {
+          NewOrderAlertManager.instance.acknowledgeAll();
+        }
+
         router.go(AppRoutes.admin);
         if (orderId.isNotEmpty) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -117,6 +138,9 @@ void _initializeBackgroundServices() async {
 }
 
 void showOrderDetailsDialog(String orderId) async {
+  // Immediately acknowledge and silence repeating alert for this order
+  NewOrderAlertManager.instance.acknowledgeOrder(orderId);
+
   final navContext = router.routerDelegate.navigatorKey.currentContext;
   if (navContext == null) return;
 
@@ -264,10 +288,18 @@ class GroceryApp extends StatelessWidget {
                   currentUserId: userProvider.firebaseUser?.uid,
                   onTapNotification: (orderId) {
                     if (orderId != null && orderId.isNotEmpty) {
+                      NewOrderAlertManager.instance.acknowledgeOrder(orderId);
                       showOrderDetailsDialog(orderId);
+                    } else {
+                      NewOrderAlertManager.instance.acknowledgeAll();
                     }
                   },
-                  child: child ?? const SizedBox.shrink(),
+                  child: NewOrderBannerListener(
+                    onViewOrder: (orderId) {
+                      showOrderDetailsDialog(orderId);
+                    },
+                    child: child ?? const SizedBox.shrink(),
+                  ),
                 ),
               );
             },

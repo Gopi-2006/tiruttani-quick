@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'new_order_alert_manager.dart';
 
 class NotificationService {
   static final NotificationService instance = NotificationService._();
@@ -39,14 +40,16 @@ class NotificationService {
       initSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         final payloadStr = response.payload;
-        if (payloadStr != null) {
+        if (payloadStr != null && payloadStr.isNotEmpty) {
           try {
             final Map<String, dynamic> payload = json.decode(payloadStr) as Map<String, dynamic>;
             _handleNotificationData(payload);
+            return;
           } catch (e) {
             debugPrint('[NotificationService] Error parsing notification response payload: $e');
           }
         }
+        _handleNotificationData({});
       },
     );
 
@@ -107,6 +110,15 @@ class NotificationService {
 
   /// Centralized notification payload dispatcher
   void _handleNotificationData(Map<String, dynamic> data) {
+    final orderId = data['orderId']?.toString();
+    if (orderId != null && orderId.isNotEmpty) {
+      // Immediately acknowledge and silence repeating alert for this order
+      NewOrderAlertManager.instance.acknowledgeOrder(orderId);
+    } else {
+      // Immediately silence all active alerts on generic notification tap
+      NewOrderAlertManager.instance.acknowledgeAll();
+    }
+
     if (_onTapCallback != null) {
       _onTapCallback!(data);
     } else {
@@ -299,6 +311,21 @@ class NotificationService {
     final notification = message.notification;
     final title = notification?.title ?? message.data['title']?.toString() ?? 'Tiruttani Quick';
     final body = notification?.body ?? message.data['body']?.toString() ?? '';
+
+    // If new order alert received in foreground, trigger NewOrderAlertManager repeating alert
+    if (message.data['type'] == 'new_order') {
+      final orderId = message.data['orderId']?.toString() ?? '';
+      if (orderId.isNotEmpty) {
+        NewOrderAlertManager.instance.handleNewOrderReceived(
+          orderId: orderId,
+          orderNumber: message.data['orderNumber']?.toString(),
+          totalAmount: double.tryParse(message.data['totalAmount']?.toString() ?? '0'),
+          customerName: message.data['customerName']?.toString(),
+          customerId: message.data['customerId']?.toString(),
+          rawPayload: message.data,
+        );
+      }
+    }
 
     showLocalNotification(
       title: title,

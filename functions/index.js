@@ -243,6 +243,9 @@ async function handleOrderCreated(orderData, orderId) {
     data: {
       type: "new_order",
       orderId: orderId,
+      orderNumber: String(orderNumber),
+      customerId: String(orderData.customerId || ""),
+      status: "pending",
       screen: "admin_dashboard",
     },
   };
@@ -258,6 +261,9 @@ async function handleOrderCreated(orderData, orderId) {
       data: {
         type: "new_order",
         orderId: orderId,
+        orderNumber: String(orderNumber),
+        customerId: String(orderData.customerId || ""),
+        status: "pending",
         screen: "admin_dashboard",
       },
       android: {

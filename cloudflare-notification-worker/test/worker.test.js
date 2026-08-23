@@ -163,6 +163,7 @@ test('Admin New Order FCM message builder generates high priority payload with c
     orderNumber: 'TQ777',
     totalAmount: 450.50,
     customerName: 'Gopi',
+    customerId: 'CUST_123',
   });
 
   assert.equal(msg.message.token, 'admin_device_token_99');
@@ -171,6 +172,8 @@ test('Admin New Order FCM message builder generates high priority payload with c
   assert.equal(msg.message.data.type, 'new_order');
   assert.equal(msg.message.data.orderId, 'ORDER_NEW_777');
   assert.equal(msg.message.data.orderNumber, 'TQ777');
+  assert.equal(msg.message.data.customerId, 'CUST_123');
+  assert.equal(msg.message.data.status, 'pending');
   assert.equal(msg.message.data.screen, 'admin_dashboard');
   assert.equal(msg.message.android.priority, 'high');
   assert.equal(msg.message.android.notification.channel_id, 'admin_new_orders_v2');

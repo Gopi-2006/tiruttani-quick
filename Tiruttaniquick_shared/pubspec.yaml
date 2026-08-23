@@ -22,4 +22,5 @@ dependencies:
   http: ^1.2.0
   shared_preferences: ^2.5.5
   flutter_blurhash: ^0.9.1
+  flutter_ringtone_player: ^4.0.0
 

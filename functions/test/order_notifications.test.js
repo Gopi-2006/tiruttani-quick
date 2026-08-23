@@ -210,3 +210,18 @@ describe("Multi-Customer Isolation & Targeting", () => {
     assert.match(resultB.body, /ORD_B/);
   });
 });
+
+describe("Admin New Order FCM Notifications (onOrderCreated)", () => {
+  test("handleOrderCreated skips gracefully when no admin tokens exist", async () => {
+    const orderData = {
+      orderNumber: "TQ_NEW_001",
+      totalPrice: 500,
+      customerId: "cust_123",
+      status: "pending",
+    };
+    const result = await _test.handleOrderCreated(orderData, "order_new_001");
+    assert.equal(result.skipped, true);
+    assert.equal(result.reason, "no_admin_tokens");
+    assert.equal(result.orderId, "order_new_001");
+  });
+});

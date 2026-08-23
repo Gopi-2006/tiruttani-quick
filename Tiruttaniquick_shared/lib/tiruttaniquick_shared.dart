@@ -41,6 +41,7 @@ export 'services/payment_service.dart';
 export 'services/secure_storage_service.dart';
 export 'services/notification_service.dart';
 export 'services/notification_sender_service.dart';
+export 'services/new_order_alert_manager.dart';
 export 'services/connectivity_provider.dart';
 export 'services/offer_engine.dart';
 export 'services/product_search_engine.dart';

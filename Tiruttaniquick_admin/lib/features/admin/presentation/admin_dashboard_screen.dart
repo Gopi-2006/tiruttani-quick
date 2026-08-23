@@ -747,6 +747,9 @@ class _OrdersTabState extends State<_OrdersTab> {
               );
             }
 
+            // Acknowledge and stop any repeating new-order alert when status is updated
+            NewOrderAlertManager.instance.acknowledgeOrder(order.id);
+
             await widget.firestore.updateOrderStatus(
               orderId: order.id,
               status: status,
@@ -901,6 +904,7 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
     _currentStatus = widget.order.status;
     _isExpanded = widget.initiallyExpanded;
     if (_isExpanded) {
+      NewOrderAlertManager.instance.acknowledgeOrder(widget.order.id);
       _detailsFuture = _fetchDetails();
       _detailsLoaded = true;
     }
@@ -932,9 +936,12 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
   void _toggleExpand() {
     setState(() {
       _isExpanded = !_isExpanded;
-      if (_isExpanded && !_detailsLoaded) {
-        _detailsFuture = _fetchDetails();
-        _detailsLoaded = true;
+      if (_isExpanded) {
+        NewOrderAlertManager.instance.acknowledgeOrder(widget.order.id);
+        if (!_detailsLoaded) {
+          _detailsFuture = _fetchDetails();
+          _detailsLoaded = true;
+        }
       }
     });
   }
@@ -1019,28 +1026,76 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
     final addressSnap = results[1] as DocumentSnapshot;
     final itemsSnap = results[2] as QuerySnapshot;
 
+    final customerData = customerSnap.exists ? (customerSnap.data() as Map<String, dynamic>? ?? {}) : <String, dynamic>{};
+    final addressData = addressSnap.exists ? (addressSnap.data() as Map<String, dynamic>? ?? {}) : <String, dynamic>{};
+
     return {
-      'customerName': customerSnap.exists ? (customerSnap.data() as Map<String, dynamic>)['name'] as String? ?? 'Customer' : 'Customer',
-      'customerEmail': customerSnap.exists ? (customerSnap.data() as Map<String, dynamic>)['email'] as String? ?? '' : '',
-      'address': addressSnap.exists ? (addressSnap.data() as Map<String, dynamic>)['fullAddress'] as String? ?? 'No address' : 'No address',
-      'landmark': addressSnap.exists ? (addressSnap.data() as Map<String, dynamic>)['landmark'] as String? ?? '' : '',
-      'phone': addressSnap.exists ? (addressSnap.data() as Map<String, dynamic>)['phone'] as String? ?? '' : '',
-      'pincode': addressSnap.exists ? (addressSnap.data() as Map<String, dynamic>)['pincode'] as String? ?? '' : '',
+      'customerName': customerData['name'] as String? ?? 'Customer',
+      'customerEmail': customerData['email'] as String? ?? '',
+      'address': addressData['fullAddress'] as String? ?? 'No address',
+      'landmark': addressData['landmark'] as String? ?? '',
+      'city': addressData['city'] as String? ?? 'Thiruttani',
+      'state': addressData['state'] as String? ?? 'Tamil Nadu',
+      'phone': addressData['phone'] as String? ?? '',
+      'pincode': addressData['pincode'] as String? ?? '',
+      'latitude': (addressData['latitude'] as num?)?.toDouble(),
+      'longitude': (addressData['longitude'] as num?)?.toDouble(),
       'items': itemsSnap.docs.map((doc) => doc.data()).toList(),
     };
   }
 
-  Future<void> _launchMap(String address, String landmark, String pincode) async {
-    final query = Uri.encodeComponent('$address $landmark $pincode');
-    final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
+  Future<void> _launchMap({
+    double? latitude,
+    double? longitude,
+    String? address,
+    String? landmark,
+    String? city,
+    String? pincode,
+  }) async {
+    final bool hasCoords = latitude != null &&
+        longitude != null &&
+        latitude != 0.0 &&
+        longitude != 0.0;
+
+    final List<String> addressParts = [
+      if (address != null && address.trim().isNotEmpty) address.trim(),
+      if (landmark != null && landmark.trim().isNotEmpty) landmark.trim(),
+      if (city != null && city.trim().isNotEmpty) city.trim(),
+      if (pincode != null && pincode.trim().isNotEmpty) pincode.trim(),
+      'Tamil Nadu',
+    ];
+
+    final String query = addressParts.isNotEmpty
+        ? addressParts.join(', ')
+        : 'Thiruttani, Tamil Nadu';
+
+    // 1. Google Maps Web/App Universal Intent URL
+    final Uri googleMapsUrl = hasCoords
+        ? Uri.parse('https://www.google.com/maps/search/?api=1&query=$latitude,$longitude')
+        : Uri.parse('https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}');
+
+    // 2. Native Geo URI scheme
+    final Uri geoUri = hasCoords
+        ? Uri.parse('geo:$latitude,$longitude?q=$latitude,$longitude(${Uri.encodeComponent('Customer Delivery Location')})')
+        : Uri.parse('geo:0,0?q=${Uri.encodeComponent(query)}');
+
     try {
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-      } else {
-        debugPrint('Could not launch maps URL: $url');
+      if (await canLaunchUrl(googleMapsUrl)) {
+        await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+        return;
       }
+      if (await canLaunchUrl(geoUri)) {
+        await launchUrl(geoUri, mode: LaunchMode.externalApplication);
+        return;
+      }
+      await launchUrl(googleMapsUrl, mode: LaunchMode.platformDefault);
     } catch (e) {
-      debugPrint('Error launching maps: $e');
+      debugPrint('[OrderDetailsCard] Error launching maps: $e');
+      try {
+        await launchUrl(googleMapsUrl, mode: LaunchMode.platformDefault);
+      } catch (err) {
+        debugPrint('[OrderDetailsCard] Fallback maps launch error: $err');
+      }
     }
   }
 
@@ -1273,33 +1328,114 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        InkWell(
-                          onTap: () => _launchMap(
-                            details['address'] as String? ?? '',
-                            details['landmark'] as String? ?? '',
-                            details['pincode'] as String? ?? '',
+                        const SizedBox(height: 6),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.25),
+                              width: 1,
+                            ),
                           ),
-                          borderRadius: BorderRadius.circular(4),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2.0),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(Icons.map_outlined, size: 16, color: AppColors.primary),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    'Address: ${details['address']}${details['landmark'].toString().isNotEmpty ? ' (${details['landmark']})' : ''}, Pincode: ${details['pincode']}',
-                                    style: const TextStyle(
-                                      color: AppColors.primary,
-                                      decoration: TextDecoration.underline,
-                                      decorationColor: AppColors.primary,
-                                      fontWeight: FontWeight.w500,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () => _launchMap(
+                                latitude: details['latitude'] as double?,
+                                longitude: details['longitude'] as double?,
+                                address: details['address'] as String?,
+                                landmark: details['landmark'] as String?,
+                                city: details['city'] as String?,
+                                pincode: details['pincode'] as String?,
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(6),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary.withValues(alpha: 0.15),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.location_on,
+                                            size: 18,
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Expanded(
+                                          child: Text(
+                                            'Delivery Address',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppColors.primary,
+                                            ),
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary,
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.directions, size: 14, color: Colors.white),
+                                              SizedBox(width: 4),
+                                              Text(
+                                                'Open Map',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      details['address'] as String? ?? 'No address provided',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                    if ((details['landmark'] as String? ?? '').trim().isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Landmark: ${details['landmark']}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade700,
+                                        ),
+                                      ),
+                                    ],
+                                    if ((details['pincode'] as String? ?? '').trim().isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Pincode: ${details['pincode']}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade700,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),

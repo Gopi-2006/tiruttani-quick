@@ -235,6 +235,7 @@ export async function sendAdminNewOrderNotification({
   orderNumber,
   totalAmount,
   customerName,
+  customerId,
 }) {
   if (!tokens || tokens.length === 0) {
     return { delivered: 0, failed: 0, invalidTokens: [], results: [] };
@@ -261,6 +262,7 @@ export async function sendAdminNewOrderNotification({
         orderNumber,
         totalAmount,
         customerName,
+        customerId,
       });
 
       try {

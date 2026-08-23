@@ -648,6 +648,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         orderNumber: orderNumber,
         totalAmount: total,
         customerName: customerName,
+        customerId: user.uid,
       );
 
       if (!mounted) return;

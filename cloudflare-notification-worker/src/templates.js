@@ -128,7 +128,7 @@ export function buildFcmV1Message({ token, statusKey, orderId, orderNumber, deli
  * Builds the FCM HTTP v1 JSON message structure for an Admin New Order Alert.
  * Targets the 'admin_new_orders' high-priority notification channel with custom alert sound.
  */
-export function buildAdminNewOrderFcmMessage({ token, orderId, orderNumber, totalAmount, customerName }) {
+export function buildAdminNewOrderFcmMessage({ token, orderId, orderNumber, totalAmount, customerName, customerId }) {
   const displayNum = orderNumber || (orderId ? (orderId.length > 8 ? orderId.substring(0, 8) : orderId) : '');
   const title = 'New Order Received';
   const amountStr = totalAmount ? ` worth ₹${Number(totalAmount).toFixed(0)}` : '';
@@ -145,6 +145,10 @@ export function buildAdminNewOrderFcmMessage({ token, orderId, orderNumber, tota
         type: 'new_order',
         orderId: String(orderId || ''),
         orderNumber: String(displayNum || ''),
+        customerId: String(customerId || ''),
+        status: 'pending',
+        totalAmount: String(totalAmount || '0'),
+        customerName: String(customerName || 'Customer'),
         screen: 'admin_dashboard',
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
       },

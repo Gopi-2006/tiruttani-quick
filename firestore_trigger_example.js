@@ -153,14 +153,32 @@ exports.onOrderCreated = onDocumentCreated("orders/{orderId}", async (event) => 
         body: `A customer has placed order #${orderNumber}.`,
       },
       data: {
-        type: "admin",
+        type: "new_order",
         orderId: event.params.orderId,
+        orderNumber: String(orderNumber),
+        customerId: String(orderData.customerId || ""),
+        status: "pending",
+        totalAmount: String(orderData.totalPrice || orderData.totalAmount || "0"),
+        screen: "admin_dashboard",
         click_action: "FLUTTER_NOTIFICATION_CLICK",
       },
       android: {
+        priority: "high",
         notification: {
-          channelId: "admin_channel",
+          channelId: "admin_new_orders_v2",
+          sound: "new_order_alert",
+          defaultSound: false,
+          defaultVibrateTimings: true,
+          notificationPriority: "PRIORITY_HIGH",
           clickAction: "FLUTTER_NOTIFICATION_CLICK",
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: "new_order_alert.wav",
+            badge: 1,
+          },
         },
       },
     };

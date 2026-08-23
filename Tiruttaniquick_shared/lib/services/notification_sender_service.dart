@@ -164,6 +164,7 @@ class NotificationSenderService {
     required String orderNumber,
     required double totalAmount,
     String? customerName,
+    String? customerId,
   }) async {
     if (orderId.isEmpty) {
       debugPrint('[NotificationSenderService] Missing orderId; skipping new order push.');
@@ -198,6 +199,8 @@ class NotificationSenderService {
         'orderNumber': orderNumber,
         'totalAmount': totalAmount,
         'customerName': customerName ?? 'Customer',
+        'customerId': customerId ?? (user.uid),
+        'status': 'pending',
         'tokens': adminTokens,
       };
 
