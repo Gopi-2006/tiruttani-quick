@@ -13,6 +13,7 @@ class ProductVariantModel {
   final String barcode;
   final String sku;
   final String imageUrl;
+  final String blurHash;
 
   // Transient promotion fields
   final String? appliedOfferId;
@@ -36,6 +37,7 @@ class ProductVariantModel {
     required this.barcode,
     required this.sku,
     this.imageUrl = '',
+    this.blurHash = '',
     this.appliedOfferId,
     this.appliedOfferTitle,
     this.appliedOfferEndsAt,
@@ -72,6 +74,7 @@ class ProductVariantModel {
       barcode: map['barcode'] as String? ?? '',
       sku: map['sku'] as String? ?? '',
       imageUrl: map['imageUrl'] as String? ?? '',
+      blurHash: map['blurHash'] as String? ?? '',
     );
   }
 
@@ -92,6 +95,7 @@ class ProductVariantModel {
       'barcode': barcode,
       'sku': sku,
       'imageUrl': imageUrl,
+      'blurHash': blurHash,
     };
   }
 
@@ -110,6 +114,7 @@ class ProductVariantModel {
     String? barcode,
     String? sku,
     String? imageUrl,
+    String? blurHash,
     String? appliedOfferId,
     String? appliedOfferTitle,
     DateTime? appliedOfferEndsAt,
@@ -131,6 +136,7 @@ class ProductVariantModel {
       barcode: barcode ?? this.barcode,
       sku: sku ?? this.sku,
       imageUrl: imageUrl ?? this.imageUrl,
+      blurHash: blurHash ?? this.blurHash,
       appliedOfferId: appliedOfferId ?? this.appliedOfferId,
       appliedOfferTitle: appliedOfferTitle ?? this.appliedOfferTitle,
       appliedOfferEndsAt: appliedOfferEndsAt ?? this.appliedOfferEndsAt,

@@ -34,6 +34,10 @@ class CurrentUserProvider extends ChangeNotifier {
   bool privacyPolicyAccepted = false;
   bool _isInitStarted = false;
 
+  /// Completer that resolves once the initial auth state has been fully resolved.
+  final Completer<void> _initCompleter = Completer<void>();
+  Future<void> get initComplete => _initCompleter.future;
+
   User? get firebaseUser => _firebaseUser ?? _auth?.currentUser;
   UserProfileModel? get profile => _profile;
   bool get loading => _loading;
@@ -58,6 +62,7 @@ class CurrentUserProvider extends ChangeNotifier {
         if (user == null) {
           _profile = null;
           _loading = false;
+          if (!_initCompleter.isCompleted) _initCompleter.complete();
           notifyListeners();
           return;
         }
@@ -103,10 +108,12 @@ class CurrentUserProvider extends ChangeNotifier {
         await _loadPrivacyPolicyState();
 
         _loading = false;
+        if (!_initCompleter.isCompleted) _initCompleter.complete();
         notifyListeners();
       });
     } else {
       _loading = false;
+      if (!_initCompleter.isCompleted) _initCompleter.complete();
       notifyListeners();
     }
   }

@@ -93,6 +93,7 @@ void main() {
         nameTamil: 'விம் டிஷ்வாஷ்',
         imageUrl: 'https://example.com/vim.png',
         price: 55.0,
+        mrp: 65.0,
         categoryId: 'cat_cleaning',
         unit: '250 ml',
         stockQuantity: 10,
@@ -100,7 +101,7 @@ void main() {
         isActive: true,
         sortOrder: 1,
         brand: 'Vim',
-        description: 'Lemon power dishwash gel',
+        description: 'Lemon power dishwash gel for sparkling clean utensils',
         tags: ['dishwash', 'cleaning', 'gel'],
         searchKeywords: ['bar', 'soap', 'cleaner'],
       ),
@@ -110,6 +111,7 @@ void main() {
         nameTamil: 'உளுந்தம் பருப்பு',
         imageUrl: 'https://example.com/urad.png',
         price: 120.0,
+        mrp: 140.0,
         categoryId: 'cat_pulses',
         unit: '1 kg',
         stockQuantity: 20,
@@ -125,6 +127,7 @@ void main() {
         nameTamil: 'பசு பால்',
         imageUrl: 'https://example.com/milk.png',
         price: 30.0,
+        mrp: 35.0,
         categoryId: 'cat_dairy',
         unit: '500 ml',
         stockQuantity: 15,
@@ -133,6 +136,38 @@ void main() {
         sortOrder: 3,
         brand: 'Amul',
         tags: ['dairy', 'milk'],
+      ),
+      const ProductModel(
+        id: 'p4',
+        name: 'Aashirvaad Superior MP Atta',
+        nameTamil: 'ஆசிர்வாத் கோதுமை மாவு',
+        imageUrl: 'https://example.com/atta.png',
+        price: 245.0,
+        mrp: 290.0,
+        categoryId: 'cat_staples',
+        unit: '5 kg',
+        stockQuantity: 0, // Out of stock
+        lowStockThreshold: 5,
+        isActive: true,
+        sortOrder: 4,
+        brand: 'Aashirvaad',
+        tags: ['atta', 'flour', 'wheat'],
+      ),
+      const ProductModel(
+        id: 'p5',
+        name: 'Fortune Sunlite Refined Sunflower Oil',
+        nameTamil: 'சூரியகாந்தி எண்ணெய்',
+        imageUrl: 'https://example.com/oil.png',
+        price: 135.0,
+        mrp: 175.0,
+        categoryId: 'cat_oil',
+        unit: '1 L',
+        stockQuantity: 25,
+        lowStockThreshold: 5,
+        isActive: true,
+        sortOrder: 5,
+        brand: 'Fortune',
+        tags: ['oil', 'cooking oil'],
       ),
     ];
 
@@ -158,39 +193,152 @@ void main() {
         color: '#000',
         sortOrder: 3,
       ),
+      const CategoryModel(
+        id: 'cat_staples',
+        name: 'Atta, Rice & Dal',
+        imageUrl: '',
+        color: '#000',
+        sortOrder: 4,
+      ),
+      const CategoryModel(
+        id: 'cat_oil',
+        name: 'Oils & Ghee',
+        imageUrl: '',
+        color: '#000',
+        sortOrder: 5,
+      ),
     ];
 
-    test('Partial English name match "vim" finds VIM DRP DISHWASH GEL', () {
+    test('1. Empty query returns all active products', () {
       final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: '  ',
+        categories: sampleCategories,
+      );
+      expect(results.length, 5);
+    });
+
+    test('2. Single character search "a" matches all products containing "a"', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'a',
+        categories: sampleCategories,
+      );
+      expect(results.isNotEmpty, true);
+      // Products with 'a': VIM (in tags/keywords/cat), Urad Dal (in name), Fresh Cow Milk (in tags), Aashirvaad Atta, Fortune Oil
+      expect(results.any((p) => p.id == 'p4'), true);
+      expect(results.any((p) => p.id == 'p2'), true);
+    });
+
+    test('3. Single character search "v" ranks VIM DISHWASH top', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'v',
+        categories: sampleCategories,
+      );
+      expect(results.first.id, 'p1');
+    });
+
+    test('4. Middle substring search "ash" matches Aashirvaad and Dishwash', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'ash',
+        categories: sampleCategories,
+      );
+      expect(results.length, 2);
+      expect(results.map((p) => p.id).toSet(), {'p1', 'p4'});
+    });
+
+    test('5. Middle substring search "tta" matches Aashirvaad Atta', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'tta',
+        categories: sampleCategories,
+      );
+      expect(results.length, 1);
+      expect(results.first.id, 'p4');
+    });
+
+    test('6. Middle substring search "oil" matches Fortune Sunflower Oil', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'oil',
+        categories: sampleCategories,
+      );
+      expect(results.length, 1);
+      expect(results.first.id, 'p5');
+    });
+
+    test('7. Middle substring search "ing" matches Cleaning category and Dishwash Gel description', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'ing',
+        categories: sampleCategories,
+      );
+      expect(results.any((p) => p.id == 'p1'), true);
+    });
+
+    test('8. Case-insensitive search "VIM", "vim", "ViM" produce identical results', () {
+      final resUpper = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'VIM',
+        categories: sampleCategories,
+      );
+      final resLower = ProductSearchEngine.filterProducts(
         products: sampleProducts,
         rawQuery: 'vim',
         categories: sampleCategories,
       );
-      expect(results.length, 1);
-      expect(results.first.id, 'p1');
+      final resMixed = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'ViM',
+        categories: sampleCategories,
+      );
+      expect(resUpper.map((p) => p.id).toList(), resLower.map((p) => p.id).toList());
+      expect(resLower.map((p) => p.id).toList(), resMixed.map((p) => p.id).toList());
     });
 
-    test('Partial name match "urad" finds Urad Dal', () {
+    test('9. Whitespace normalization: leading, trailing, and multiple spaces work identically', () {
+      final resTrim = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: '  atta   5kg  ',
+        categories: sampleCategories,
+      );
+      expect(resTrim.length, 1);
+      expect(resTrim.first.id, 'p4');
+    });
+
+    test('10. Multi-word search "atta 5kg" matches Aashirvaad Atta 5 kg', () {
       final results = ProductSearchEngine.filterProducts(
         products: sampleProducts,
-        rawQuery: 'urad',
+        rawQuery: 'atta 5kg',
         categories: sampleCategories,
       );
       expect(results.length, 1);
-      expect(results.first.id, 'p2');
+      expect(results.first.id, 'p4');
     });
 
-    test('Brand search "amul" finds Fresh Cow Milk', () {
+    test('11. Brand search "fortune" finds Fortune Sunflower Oil', () {
       final results = ProductSearchEngine.filterProducts(
         products: sampleProducts,
-        rawQuery: 'amul',
+        rawQuery: 'fortune',
+        categories: sampleCategories,
+      );
+      expect(results.length, 1);
+      expect(results.first.id, 'p5');
+    });
+
+    test('12. Category search "dairy" matches Fresh Cow Milk', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'dairy',
         categories: sampleCategories,
       );
       expect(results.length, 1);
       expect(results.first.id, 'p3');
     });
 
-    test('Tamil name search "உளுந்தம்" finds Urad Dal', () {
+    test('13. Tamil product name search "உளுந்தம்" finds Urad Dal', () {
       final results = ProductSearchEngine.filterProducts(
         products: sampleProducts,
         rawQuery: 'உளுந்தம்',
@@ -200,41 +348,163 @@ void main() {
       expect(results.first.id, 'p2');
     });
 
-    test('Category term search "cleaning" matches products in Cleaning category', () {
+    test('14. Tamil substring search "எண்ணெய்" finds Sunflower Oil', () {
       final results = ProductSearchEngine.filterProducts(
         products: sampleProducts,
-        rawQuery: 'cleaning',
+        rawQuery: 'எண்ணெய்',
         categories: sampleCategories,
       );
       expect(results.length, 1);
-      expect(results.first.id, 'p1');
+      expect(results.first.id, 'p5');
     });
 
-    test('Multi-token search "vim gel" matches VIM DRP DISHWASH GEL', () {
+    test('15. Non-existent query returns empty list without error', () {
       final results = ProductSearchEngine.filterProducts(
         products: sampleProducts,
-        rawQuery: 'vim gel',
+        rawQuery: 'nonexistentproductxyz99',
         categories: sampleCategories,
+      );
+      expect(results.isEmpty, true);
+    });
+
+    test('16. Search + InStock Filter excludes out-of-stock products', () {
+      final allAtta = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'atta',
+        categories: sampleCategories,
+      );
+      expect(allAtta.length, 1); // Found p4
+
+      final inStockAtta = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'atta',
+        categories: sampleCategories,
+        filterOptions: const ProductFilterOptions(inStockOnly: true),
+      );
+      expect(inStockAtta.isEmpty, true); // p4 is OOS, correctly filtered out
+    });
+
+    test('17. Search + Price Filter filters out products exceeding maxPrice', () {
+      final cheapOil = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'oil',
+        categories: sampleCategories,
+        filterOptions: const ProductFilterOptions(maxPrice: 100),
+      );
+      expect(cheapOil.isEmpty, true); // Oil is ₹135
+
+      final affordableOil = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'oil',
+        categories: sampleCategories,
+        filterOptions: const ProductFilterOptions(maxPrice: 150),
+      );
+      expect(affordableOil.length, 1);
+      expect(affordableOil.first.id, 'p5');
+    });
+
+    test('18. Search + Brand Filter narrows results to selected brand', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: 'oil',
+        categories: sampleCategories,
+        filterOptions: const ProductFilterOptions(brands: {'Fortune'}),
       );
       expect(results.length, 1);
-      expect(results.first.id, 'p1');
+      expect(results.first.brand, 'Fortune');
     });
 
-    test('Empty query returns unmodifiable copy of all products', () {
+    test('19. Sorting by Price Low to High orders results ascendingly', () {
       final results = ProductSearchEngine.filterProducts(
         products: sampleProducts,
-        rawQuery: '  ',
+        rawQuery: '',
         categories: sampleCategories,
+        sortOption: ProductSortOption.priceLowToHigh,
       );
-      expect(results.length, 3);
+      expect(results.first.price, 30.0); // Fresh Cow Milk
+      expect(results.last.price, 245.0); // Aashirvaad Atta
+    });
+
+    test('20. Sorting by Price High to Low orders results descendingly', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: '',
+        categories: sampleCategories,
+        sortOption: ProductSortOption.priceHighToLow,
+      );
+      expect(results.first.price, 245.0); // Aashirvaad Atta
+      expect(results.last.price, 30.0); // Fresh Cow Milk
+    });
+
+    test('21. Sorting by Discount High to Low orders highest savings first', () {
+      final results = ProductSearchEngine.filterProducts(
+        products: sampleProducts,
+        rawQuery: '',
+        categories: sampleCategories,
+        sortOption: ProductSortOption.discountHighToLow,
+      );
+      // Fortune Oil: (175 - 135) / 175 = 22.8% discount
+      expect(results.first.id, 'p5');
+    });
+
+    test('22. Relevance Ranking: Exact & Prefix name match ranks higher than general substring', () {
+      final testProducts = [
+        const ProductModel(
+          id: 't1',
+          name: 'Crispy Rice Crackers',
+          imageUrl: '',
+          price: 40,
+          categoryId: 'cat_snacks',
+          unit: '100 g',
+          stockQuantity: 10,
+          lowStockThreshold: 2,
+          isActive: true,
+          sortOrder: 1,
+        ),
+        const ProductModel(
+          id: 't2',
+          name: 'Rice',
+          imageUrl: '',
+          price: 60,
+          categoryId: 'cat_staples',
+          unit: '1 kg',
+          stockQuantity: 10,
+          lowStockThreshold: 2,
+          isActive: true,
+          sortOrder: 2,
+        ),
+        const ProductModel(
+          id: 't3',
+          name: 'Rice Flour Extra Fine',
+          imageUrl: '',
+          price: 50,
+          categoryId: 'cat_staples',
+          unit: '500 g',
+          stockQuantity: 10,
+          lowStockThreshold: 2,
+          isActive: true,
+          sortOrder: 3,
+        ),
+      ];
+
+      final results = ProductSearchEngine.filterProducts(
+        products: testProducts,
+        rawQuery: 'rice',
+      );
+
+      // Expected ranking: 'Rice' (Exact 1000) -> 'Rice Flour Extra Fine' (Prefix 750) -> 'Crispy Rice Crackers' (Word match 500)
+      expect(results[0].id, 't2'); // 'Rice'
+      expect(results[1].id, 't3'); // 'Rice Flour Extra Fine'
+      expect(results[2].id, 't1'); // 'Crispy Rice Crackers'
     });
   });
 
   group('ProductModel Tests', () {
-    test('ProductModel.fromFirestore parses correct fields (standard map)', () {
+    test('ProductModel.fromFirestore parses correct fields including blurHash', () {
       final data = {
         'productName': 'Fresh Milk',
         'imageUrl': 'https://example.com/milk.png',
+        'blurHash': 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
         'sellingPrice': 2.5,
         'category': 'dairy',
         'unit': '1L',
@@ -252,6 +522,7 @@ void main() {
       expect(product.id, 'prod_1');
       expect(product.name, 'Fresh Milk');
       expect(product.imageUrl, 'https://example.com/milk.png');
+      expect(product.blurHash, 'LEHV6nWB2yk8pyo0adR*.7kCMdnj');
       expect(product.price, 2.5);
       expect(product.categoryId, 'dairy');
       expect(product.unit, '1L');
@@ -266,7 +537,7 @@ void main() {
       expect(product.isOutOfStock, false);
     });
 
-    test('ProductModel.fromFirestore falls back to alternative fields', () {
+    test('ProductModel.fromFirestore falls back to alternative fields and defaults blurHash', () {
       final data = {
         'name': 'Apple',
         'price': 1.8,
@@ -278,6 +549,7 @@ void main() {
       expect(product.name, 'Apple');
       expect(product.price, 1.8);
       expect(product.categoryId, 'fruits');
+      expect(product.blurHash, '');
       expect(product.stockQuantity, 0); // Defaults
       expect(product.isOutOfStock, true);
     });
@@ -286,6 +558,7 @@ void main() {
       final product = ProductModel.fromFirestore('prod_3', {});
       expect(product.name, 'Product');
       expect(product.price, 0.0);
+      expect(product.blurHash, '');
       expect(product.stockQuantity, 0);
       expect(product.isActive, true);
     });
@@ -314,9 +587,10 @@ void main() {
       expect(product4.isLowStock, false); // Out of stock, not just low stock
     });
 
-    test('ProductModel.toMap serializes fields correctly', () {
+    test('ProductModel.toMap serializes fields correctly including blurHash', () {
       final product = ProductModel(
-        id: '1', name: 'Fresh Milk', imageUrl: 'img', price: 2.5, categoryId: 'dairy', unit: '1L',
+        id: '1', name: 'Fresh Milk', imageUrl: 'img', blurHash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
+        price: 2.5, categoryId: 'dairy', unit: '1L',
         stockQuantity: 10, lowStockThreshold: 3, isActive: true, sortOrder: 2, brand: 'Amul', mrp: 3.0,
       );
 
@@ -324,12 +598,97 @@ void main() {
       expect(map['productName'], 'Fresh Milk');
       expect(map['name'], 'Fresh Milk');
       expect(map['imageUrl'], 'img');
+      expect(map['blurHash'], 'LEHV6nWB2yk8pyo0adR*.7kCMdnj');
       expect(map['sellingPrice'], 2.5);
       expect(map['price'], 2.5);
       expect(map['category'], 'dairy');
       expect(map['categoryId'], 'dairy');
       expect(map['brand'], 'Amul');
       expect(map['mrp'], 3.0);
+    });
+
+    test('ProductModel.copyWith correctly updates blurHash', () {
+      final product = ProductModel(
+        id: '1', name: 'Milk', imageUrl: 'img', price: 2.0, categoryId: 'c1', unit: '1L',
+        stockQuantity: 5, lowStockThreshold: 2, isActive: true, sortOrder: 1,
+      );
+      final updated = product.copyWith(blurHash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj');
+      expect(updated.blurHash, 'LEHV6nWB2yk8pyo0adR*.7kCMdnj');
+      expect(product.blurHash, '');
+    });
+
+    test('ProductVariantModel parses, serializes and defaults blurHash correctly', () {
+      final mapWithHash = {
+        'id': 'v1',
+        'name': '500g',
+        'size': '500',
+        'unitType': 'g',
+        'price': 45.0,
+        'mrp': 50.0,
+        'stockQuantity': 10,
+        'lowStockThreshold': 2,
+        'status': 'Available',
+        'barcode': '',
+        'sku': '',
+        'imageUrl': 'https://example.com/v.png',
+        'blurHash': 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
+      };
+      final variant = ProductVariantModel.fromMap(mapWithHash);
+      expect(variant.blurHash, 'LEHV6nWB2yk8pyo0adR*.7kCMdnj');
+      expect(variant.toMap()['blurHash'], 'LEHV6nWB2yk8pyo0adR*.7kCMdnj');
+
+      final variantNoHash = ProductVariantModel.fromMap({});
+      expect(variantNoHash.blurHash, '');
+      expect(variantNoHash.toMap()['blurHash'], '');
+
+      final copied = variant.copyWith(blurHash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4');
+      expect(copied.blurHash, 'L6PZfSi_.AyE_3t7t7R**0o#DgR4');
+    });
+  });
+
+  group('AppNetworkImage & BlurHash Validation Tests', () {
+    test('isValidBlurHash accurately validates hashes', () {
+      expect(AppNetworkImage.isValidBlurHash('LEHV6nWB2yk8pyo0adR*.7kCMdnj'), isTrue);
+      expect(AppNetworkImage.isValidBlurHash('L6PZfSi_.AyE_3t7t7R**0o#DgR4'), isTrue);
+      expect(AppNetworkImage.isValidBlurHash(null), isFalse);
+      expect(AppNetworkImage.isValidBlurHash(''), isFalse);
+      expect(AppNetworkImage.isValidBlurHash('   '), isFalse);
+      expect(AppNetworkImage.isValidBlurHash('short'), isFalse);
+      expect(AppNetworkImage.isValidBlurHash('invalid string with spaces'), isFalse);
+    });
+
+    testWidgets('AppNetworkImage renders without crashing on invalid URL or empty hash', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AppNetworkImage(
+              imageUrl: '',
+              blurHash: '',
+              width: 100,
+              height: 100,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.image_not_supported_outlined), findsOneWidget);
+    });
+
+    testWidgets('AppNetworkImage renders without crashing with valid blurHash on network url', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AppNetworkImage(
+              imageUrl: 'https://example.com/test.jpg',
+              blurHash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
+              width: 100,
+              height: 100,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(AppNetworkImage), findsOneWidget);
     });
   });
 
@@ -588,6 +947,212 @@ void main() {
       final startup = StartupProvider();
       expect(startup.pendingNotificationRoute, isNull);
       expect(startup.consumePendingNotificationRoute(), isNull);
+    });
+  });
+
+  group('ScrollHideBottomNav Tests', () {
+    testWidgets('handleScrollNotification hides on downward scroll (positive delta)', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) {
+                bool? newVisibility;
+                final notification = ScrollUpdateNotification(
+                  metrics: FixedScrollMetrics(
+                    minScrollExtent: 0,
+                    maxScrollExtent: 500,
+                    pixels: 100,
+                    viewportDimension: 300,
+                    axisDirection: AxisDirection.down,
+                    devicePixelRatio: 1.0,
+                  ),
+                  scrollDelta: 10.0,
+                  context: ctx,
+                );
+
+                ScrollHideBottomNav.handleScrollNotification(
+                  notification: notification,
+                  isCurrentlyVisible: true,
+                  onVisibilityChanged: (v) => newVisibility = v,
+                );
+
+                expect(newVisibility, isFalse);
+                return const SizedBox();
+              },
+            ),
+          ),
+        ),
+      );
+    });
+
+    testWidgets('handleScrollNotification shows on upward scroll (negative delta)', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) {
+                bool? newVisibility;
+                final notification = ScrollUpdateNotification(
+                  metrics: FixedScrollMetrics(
+                    minScrollExtent: 0,
+                    maxScrollExtent: 500,
+                    pixels: 100,
+                    viewportDimension: 300,
+                    axisDirection: AxisDirection.down,
+                    devicePixelRatio: 1.0,
+                  ),
+                  scrollDelta: -10.0,
+                  context: ctx,
+                );
+
+                ScrollHideBottomNav.handleScrollNotification(
+                  notification: notification,
+                  isCurrentlyVisible: false,
+                  onVisibilityChanged: (v) => newVisibility = v,
+                );
+
+                expect(newVisibility, isTrue);
+                return const SizedBox();
+              },
+            ),
+          ),
+        ),
+      );
+    });
+
+    testWidgets('handleScrollNotification always shows at top of scrollable (pixels <= 0)', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) {
+                bool? newVisibility;
+                final notification = ScrollUpdateNotification(
+                  metrics: FixedScrollMetrics(
+                    minScrollExtent: 0,
+                    maxScrollExtent: 500,
+                    pixels: 0,
+                    viewportDimension: 300,
+                    axisDirection: AxisDirection.down,
+                    devicePixelRatio: 1.0,
+                  ),
+                  scrollDelta: 0.0,
+                  context: ctx,
+                );
+
+                ScrollHideBottomNav.handleScrollNotification(
+                  notification: notification,
+                  isCurrentlyVisible: false,
+                  onVisibilityChanged: (v) => newVisibility = v,
+                );
+
+                expect(newVisibility, isTrue);
+                return const SizedBox();
+              },
+            ),
+          ),
+        ),
+      );
+    });
+
+    testWidgets('handleScrollNotification ignores horizontal scrolling', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) {
+                bool called = false;
+                final notification = ScrollUpdateNotification(
+                  metrics: FixedScrollMetrics(
+                    minScrollExtent: 0,
+                    maxScrollExtent: 500,
+                    pixels: 50,
+                    viewportDimension: 300,
+                    axisDirection: AxisDirection.right,
+                    devicePixelRatio: 1.0,
+                  ),
+                  scrollDelta: 20.0,
+                  context: ctx,
+                );
+
+                ScrollHideBottomNav.handleScrollNotification(
+                  notification: notification,
+                  isCurrentlyVisible: true,
+                  onVisibilityChanged: (_) => called = true,
+                );
+
+                expect(called, isFalse);
+                return const SizedBox();
+              },
+            ),
+          ),
+        ),
+      );
+    });
+
+    testWidgets('handleScrollNotification ignores micro-scrolls below threshold', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) {
+                bool called = false;
+                final notification = ScrollUpdateNotification(
+                  metrics: FixedScrollMetrics(
+                    minScrollExtent: 0,
+                    maxScrollExtent: 500,
+                    pixels: 100,
+                    viewportDimension: 300,
+                    axisDirection: AxisDirection.down,
+                    devicePixelRatio: 1.0,
+                  ),
+                  scrollDelta: 2.0, // Below 4.0 threshold
+                  context: ctx,
+                );
+
+                ScrollHideBottomNav.handleScrollNotification(
+                  notification: notification,
+                  isCurrentlyVisible: true,
+                  onVisibilityChanged: (_) => called = true,
+                );
+
+                expect(called, isFalse);
+                return const SizedBox();
+              },
+            ),
+          ),
+        ),
+      );
+    });
+
+    testWidgets('ScrollHideBottomNav widget renders visible and hidden states', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            bottomNavigationBar: ScrollHideBottomNav(
+              isVisible: true,
+              child: Text('Nav Bar Content'),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Nav Bar Content'), findsOneWidget);
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            bottomNavigationBar: ScrollHideBottomNav(
+              isVisible: false,
+              child: Text('Nav Bar Content'),
+            ),
+          ),
+        ),
+      );
+
+      final animatedSlide = tester.widget<AnimatedSlide>(find.byType(AnimatedSlide));
+      expect(animatedSlide.offset, const Offset(0, 1));
     });
   });
 }

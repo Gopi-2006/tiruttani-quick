@@ -4,9 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import '../../../services/startup_provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
-
 import '../../../core/widgets/custom_app_bar.dart';
 import '../../../core/widgets/loading_widget.dart';
 import '../../../core/widgets/product_card.dart';
@@ -184,6 +182,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 ? currentVariant.imageUrl
                 : product.imageUrl;
 
+        final String displayBlurHash =
+            (isVariant && currentVariant != null && currentVariant.blurHash.isNotEmpty)
+                ? currentVariant.blurHash
+                : product.blurHash;
+
         // Stock
         bool isOutOfStock = false;
         String stockText = 'In Stock';
@@ -240,8 +243,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       height: 280,
                       color: Colors.white,
                       child: Center(
-                        child: CachedNetworkImage(
+                        child: AppNetworkImage(
                           imageUrl: displayImage,
+                          blurHash: displayBlurHash,
                           fit: BoxFit.contain,
                           height: 240,
                           placeholder: (ctx, url) => const Center(
@@ -874,15 +878,15 @@ class _VariantBottomSheet extends StatelessWidget {
                         // Variant image
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: v.imageUrl.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: v.imageUrl,
-                                  width: 52,
-                                  height: 52,
-                                  fit: BoxFit.contain,
-                                  errorWidget: (ctx, url, err) => _VariantPlaceholder(),
-                                )
-                              : _VariantPlaceholder(),
+                          child: AppNetworkImage(
+                            imageUrl: v.imageUrl,
+                            blurHash: v.blurHash,
+                            width: 52,
+                            height: 52,
+                            fit: BoxFit.contain,
+                            placeholder: (ctx, url) => _VariantPlaceholder(),
+                            errorWidget: (ctx, url, err) => _VariantPlaceholder(),
+                          ),
                         ),
                         const SizedBox(width: 12),
                         // Info

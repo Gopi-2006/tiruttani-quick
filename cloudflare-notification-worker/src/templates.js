@@ -43,7 +43,7 @@ export function normalizeStatus(rawStatus) {
 /**
  * Generates user-facing title and body for each status.
  */
-export function getNotificationContent(statusKey, orderId, orderNumber) {
+export function getNotificationContent(statusKey, orderId, orderNumber, deliveryOtp) {
   const displayId = orderNumber || (orderId ? (orderId.length > 8 ? orderId.substring(0, 8) : orderId) : '');
   const idText = displayId ? ` #${displayId}` : '';
 
@@ -61,7 +61,9 @@ export function getNotificationContent(statusKey, orderId, orderNumber) {
     case NOTIFICATION_STATUSES.OUT_FOR_DELIVERY:
       return {
         title: 'Out for Delivery',
-        body: `Your Tiruttani Quick order${idText} is on the way.`,
+        body: deliveryOtp
+          ? `Your Tiruttani Quick order${idText} is on the way. Delivery OTP: ${deliveryOtp}`
+          : `Your Tiruttani Quick order${idText} is on the way.`,
       };
     case NOTIFICATION_STATUSES.DELIVERED:
       return {
@@ -89,8 +91,8 @@ export function getNotificationContent(statusKey, orderId, orderNumber) {
 /**
  * Builds the FCM HTTP v1 JSON message structure for an individual registration token.
  */
-export function buildFcmV1Message({ token, statusKey, orderId, orderNumber }) {
-  const content = getNotificationContent(statusKey, orderId, orderNumber);
+export function buildFcmV1Message({ token, statusKey, orderId, orderNumber, deliveryOtp }) {
+  const content = getNotificationContent(statusKey, orderId, orderNumber, deliveryOtp);
 
   return {
     message: {
@@ -104,6 +106,7 @@ export function buildFcmV1Message({ token, statusKey, orderId, orderNumber }) {
         orderId: String(orderId || ''),
         status: String(statusKey || ''),
         screen: statusKey === 'test' ? 'home' : 'order_tracking',
+        deliveryOtp: String(deliveryOtp || ''),
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
       },
       android: {

@@ -31,6 +31,7 @@ dependencies:
   google_mobile_ads: ^9.0.0
   sendotp_flutter_sdk: ^0.0.2
   flutter_dotenv: ^5.2.1
+  flutter_blurhash: ^0.9.1
 
 
 dev_dependencies:

@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import '../../services/startup_provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 import 'animated_add_to_cart_button.dart';
 import 'skeleton_loader.dart';
@@ -67,6 +66,8 @@ class ProductCard extends StatelessWidget {
     // Image
     final String displayImage =
         (isVariant && activeVariant.imageUrl.isNotEmpty) ? activeVariant.imageUrl : decoratedProduct.imageUrl;
+    final String displayBlurHash =
+        (isVariant && activeVariant.blurHash.isNotEmpty) ? activeVariant.blurHash : decoratedProduct.blurHash;
 
     // Countdown Timer Settings
     final DateTime? offerEndsAt = isVariant ? activeVariant.appliedOfferEndsAt : decoratedProduct.appliedOfferEndsAt;
@@ -109,39 +110,29 @@ class ProductCard extends StatelessWidget {
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(AppDimensions.cardRadius),
                     ),
-                    child: (displayImage.trim().startsWith('http://') || displayImage.trim().startsWith('https://'))
-                        ? CachedNetworkImage(
-                            imageUrl: displayImage.trim(),
-                            fit: BoxFit.contain,
-                            width: double.infinity,
-                            height: double.infinity,
-                            maxWidthDiskCache: 250,
-                            maxHeightDiskCache: 250,
-                            placeholder: (context, url) => const SkeletonBox(
-                              width: double.infinity,
-                              height: double.infinity,
-                            ),
-                            errorWidget: (context, url, error) => Container(
-                              color: isDarkMode ? const Color(0xFF222222) : Colors.grey.shade50,
-                              child: Center(
-                                child: Icon(
-                                  Icons.image_not_supported_outlined,
-                                  size: 36,
-                                  color: isDarkMode ? AppColors.darkMuted : Colors.grey.shade400,
-                                ),
-                              ),
-                            ),
-                          )
-                        : Container(
-                            color: isDarkMode ? const Color(0xFF222222) : Colors.grey.shade50,
-                            child: Center(
-                              child: Icon(
-                                Icons.image_not_supported_outlined,
-                                size: 36,
-                                color: isDarkMode ? AppColors.darkMuted : Colors.grey.shade400,
-                              ),
-                            ),
+                    child: AppNetworkImage(
+                      imageUrl: displayImage,
+                      blurHash: displayBlurHash,
+                      fit: BoxFit.contain,
+                      width: double.infinity,
+                      height: double.infinity,
+                      maxWidthDiskCache: 250,
+                      maxHeightDiskCache: 250,
+                      placeholder: (context, url) => const SkeletonBox(
+                        width: double.infinity,
+                        height: double.infinity,
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: isDarkMode ? const Color(0xFF222222) : Colors.grey.shade50,
+                        child: Center(
+                          child: Icon(
+                            Icons.image_not_supported_outlined,
+                            size: 36,
+                            color: isDarkMode ? AppColors.darkMuted : Colors.grey.shade400,
                           ),
+                        ),
+                      ),
+                    ),
                   ),
                   // Discount badge
                   if (discountPct > 0)

@@ -90,7 +90,7 @@ export default {
           return jsonResponse({ error: 'Invalid JSON request body' }, 400);
         }
 
-        const { orderId, orderNumber, customerId, status, tokens } = body;
+        const { orderId, orderNumber, customerId, status, tokens, deliveryOtp } = body;
 
         if (!orderId) {
           return jsonResponse({ error: 'Missing required field: orderId' }, 400);
@@ -131,6 +131,7 @@ export default {
           statusKey,
           orderId,
           orderNumber: orderNumber || orderId.substring(0, 8),
+          deliveryOtp: deliveryOtp || '',
         });
 
         return jsonResponse({

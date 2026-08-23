@@ -155,21 +155,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     _controller.forward();
   }
 
-  void _navigateNext() {
+  Future<void> _navigateNext() async {
     if (!mounted) return;
     final userProvider = currentUserProvider;
     if (userProvider.loading) {
-      userProvider.addListener(_onUserProviderChange);
-      return;
+      await userProvider.initComplete;
     }
+    if (!mounted) return;
     _doNavigation();
-  }
-
-  void _onUserProviderChange() {
-    if (!currentUserProvider.loading && mounted) {
-      currentUserProvider.removeListener(_onUserProviderChange);
-      _doNavigation();
-    }
   }
 
   void _doNavigation() {
@@ -183,7 +176,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   void dispose() {
-    currentUserProvider.removeListener(_onUserProviderChange);
     _controller.dispose();
     super.dispose();
   }

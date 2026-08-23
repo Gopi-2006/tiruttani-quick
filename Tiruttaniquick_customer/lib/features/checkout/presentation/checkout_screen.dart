@@ -442,7 +442,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final db = FirebaseFirestore.instance;
       final orderRef = db.collection('orders').doc();
       final now = DateTime.now();
-      final orderNumber = 'TQ${now.year.toString().substring(2)}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}${(100 + Random().nextInt(900))}';
+      final ms = now.millisecond.toString().padLeft(3, '0');
+      final docEntropy = orderRef.id.length >= 4 
+          ? orderRef.id.substring(orderRef.id.length - 4).toUpperCase() 
+          : (1000 + Random.secure().nextInt(9000)).toString();
+      final orderNumber = 'TQ${now.year.toString().substring(2)}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}$ms$docEntropy';
       final subtotal = cartProvider.subtotal;
       final deliveryFee = cartProvider.deliveryFee;
       final total = cartProvider.total;

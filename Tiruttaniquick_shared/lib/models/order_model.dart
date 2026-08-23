@@ -21,6 +21,8 @@ class OrderModel {
   final DateTime? eta;
   final String notes;
   final String verificationCode;
+  final String? deliveryOtp;
+  final DateTime? deliveryOtpCreatedAt;
 
   // Cancellation and Refund Fields
   final String? cancellationReason;
@@ -48,6 +50,8 @@ class OrderModel {
     this.eta,
     this.notes = '',
     required this.verificationCode,
+    this.deliveryOtp,
+    this.deliveryOtpCreatedAt,
     this.cancellationReason,
     this.cancelledBy,
     this.cancelledAt,
@@ -75,6 +79,8 @@ class OrderModel {
       eta: _parseDateTime(data['eta']),
       notes: data['notes']?.toString() ?? '',
       verificationCode: data['verificationCode']?.toString() ?? '',
+      deliveryOtp: data['deliveryOtp']?.toString(),
+      deliveryOtpCreatedAt: _parseDateTime(data['deliveryOtpCreatedAt']),
       cancellationReason: data['cancellationReason']?.toString(),
       cancelledBy: data['cancelledBy']?.toString(),
       cancelledAt: _parseDateTime(data['cancelledAt']),
@@ -102,6 +108,8 @@ class OrderModel {
       'eta': eta != null ? Timestamp.fromDate(eta!) : null,
       'notes': notes,
       'verificationCode': verificationCode,
+      if (deliveryOtp != null) 'deliveryOtp': deliveryOtp,
+      if (deliveryOtpCreatedAt != null) 'deliveryOtpCreatedAt': deliveryOtpCreatedAt,
       'cancellationReason': cancellationReason,
       'cancelledBy': cancelledBy,
       'cancelledAt': cancelledAt,
@@ -134,6 +142,8 @@ class OrderModel {
     DateTime? eta,
     String? notes,
     String? verificationCode,
+    String? deliveryOtp,
+    DateTime? deliveryOtpCreatedAt,
     String? cancellationReason,
     String? cancelledBy,
     DateTime? cancelledAt,
@@ -159,6 +169,8 @@ class OrderModel {
       eta: eta ?? this.eta,
       notes: notes ?? this.notes,
       verificationCode: verificationCode ?? this.verificationCode,
+      deliveryOtp: deliveryOtp ?? this.deliveryOtp,
+      deliveryOtpCreatedAt: deliveryOtpCreatedAt ?? this.deliveryOtpCreatedAt,
       cancellationReason: cancellationReason ?? this.cancellationReason,
       cancelledBy: cancelledBy ?? this.cancelledBy,
       cancelledAt: cancelledAt ?? this.cancelledAt,

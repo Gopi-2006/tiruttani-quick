@@ -207,58 +207,71 @@ class OrderTrackingScreen extends StatelessWidget {
                     ),
                   ],
                   if (order.status == OrderStatuses.outForDelivery || order.status == OrderStatuses.delivered) ...[
-                    const SizedBox(height: AppDimensions.spacingMedium),
-                    Card(
-                      color: AppColors.primary.withValues(alpha: 0.08),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLarge),
-                        side: const BorderSide(color: AppColors.primary, width: 1.5),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(AppDimensions.paddingMedium),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                    Builder(
+                      builder: (context) {
+                        final displayOtp = (order.deliveryOtp != null && order.deliveryOtp!.isNotEmpty)
+                            ? order.deliveryOtp!
+                            : order.verificationCode;
+                        if (displayOtp.isEmpty) return const SizedBox.shrink();
+
+                        return Column(
                           children: [
-                            Row(
-                              children: [
-                                const Icon(AppIcons.vpnKey, color: AppColors.primary),
-                                const SizedBox(width: AppDimensions.spacingSmall),
-                                Expanded(
-                                  child: Text(
-                                    Messages.deliveryVerificationCodeHeader,
-                                    style: const TextStyle(
-                                      fontSize: AppDimensions.fontSizeLarge,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: AppDimensions.spacingNormal),
-                            Center(
-                              child: Text(
-                                order.verificationCode,
-                                style: const TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 6,
-                                  color: AppColors.text,
-                                ),
+                            const SizedBox(height: AppDimensions.spacingMedium),
+                            Card(
+                              color: AppColors.primary.withValues(alpha: 0.08),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLarge),
+                                side: const BorderSide(color: AppColors.primary, width: 1.5),
                               ),
-                            ),
-                            const SizedBox(height: AppDimensions.spacingSmall),
-                            const Text(
-                              Messages.provideVerificationCodePrompt,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: AppDimensions.fontSizeSmall,
-                                color: AppColors.muted,
+                              child: Padding(
+                                padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(AppIcons.vpnKey, color: AppColors.primary),
+                                        const SizedBox(width: AppDimensions.spacingSmall),
+                                        Expanded(
+                                          child: Text(
+                                            Messages.deliveryVerificationCodeHeader,
+                                            style: const TextStyle(
+                                              fontSize: AppDimensions.fontSizeLarge,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppColors.primary,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: AppDimensions.spacingNormal),
+                                    Center(
+                                      child: Text(
+                                        displayOtp,
+                                        style: const TextStyle(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 6,
+                                          color: AppColors.text,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: AppDimensions.spacingSmall),
+                                    const Text(
+                                      Messages.provideVerificationCodePrompt,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: AppDimensions.fontSizeSmall,
+                                        color: AppColors.muted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ],
-                        ),
-                      ),
+                        );
+                      },
                     ),
                   ],
                   if (order.status == OrderStatuses.delivered) ...[

@@ -33,5 +33,5 @@ class Messages {
   
   static const deleteProductTitle = 'Delete Product?';
   static const deleteProductPrompt = 'Remove product?';
-  static const noProductsHome = 'No products available yet. Seed demo data from admin panel.';
+  static const noProductsHome = 'No products available right now. Please check back soon.';
 }

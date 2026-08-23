@@ -222,10 +222,16 @@ class _CartItemTile extends StatelessWidget {
 
     // Resolve variant-specific image (if variant is in the product cache)
     String imageUrl = product?.imageUrl ?? '';
+    String blurHash = product?.blurHash ?? '';
     if (item.variantId.isNotEmpty && product != null && product.variantsEnabled) {
       final matchedVariant = product.variants.where((v) => v.id == item.variantId);
-      if (matchedVariant.isNotEmpty && matchedVariant.first.imageUrl.isNotEmpty) {
-        imageUrl = matchedVariant.first.imageUrl;
+      if (matchedVariant.isNotEmpty) {
+        if (matchedVariant.first.imageUrl.isNotEmpty) {
+          imageUrl = matchedVariant.first.imageUrl;
+        }
+        if (matchedVariant.first.blurHash.isNotEmpty) {
+          blurHash = matchedVariant.first.blurHash;
+        }
       }
     }
 
@@ -249,15 +255,15 @@ class _CartItemTile extends StatelessWidget {
             // Product image
             ClipRRect(
               borderRadius: BorderRadius.circular(AppDimensions.imageRadius),
-              child: imageUrl.isNotEmpty
-                  ? Image.network(
-                      imageUrl,
-                      width: 60,
-                      height: 60,
-                      fit: BoxFit.contain,
-                      errorBuilder: (ctx, url, err) => _CartImagePlaceholder(),
-                    )
-                  : _CartImagePlaceholder(),
+              child: AppNetworkImage(
+                imageUrl: imageUrl,
+                blurHash: blurHash,
+                width: 60,
+                height: 60,
+                fit: BoxFit.contain,
+                placeholder: (ctx, url) => _CartImagePlaceholder(),
+                errorWidget: (ctx, url, err) => _CartImagePlaceholder(),
+              ),
             ),
             const SizedBox(width: 12),
             // Details

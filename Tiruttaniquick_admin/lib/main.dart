@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
@@ -13,10 +14,18 @@ import 'features/admin/presentation/admin_dashboard_screen.dart';
 import 'services/current_user_provider.dart';
 import 'firebase_options.dart';
 
+@pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    debugPrint('[Admin Background Messaging Error] $e');
+  }
 }
 
 void main() async {
@@ -167,11 +176,38 @@ void showOrderDetailsDialog(String orderId) async {
                     onChangeStatus: (status) async {
                       if (status == null) return;
                       final customerId = data['customerId'] as String?;
+
+                      final Map<String, dynamic> extra = {};
+                      String? deliveryOtp = order.deliveryOtp;
+
+                      if (status == OrderStatuses.delivered) {
+                        extra['deliveredAt'] = FieldValue.serverTimestamp();
+                      } else if (status == OrderStatuses.confirmed) {
+                        extra['confirmedAt'] = FieldValue.serverTimestamp();
+                      } else if (status == OrderStatuses.packed) {
+                        extra['packedAt'] = FieldValue.serverTimestamp();
+                      } else if (status == OrderStatuses.outForDelivery) {
+                        extra['outForDeliveryAt'] = FieldValue.serverTimestamp();
+                        if (deliveryOtp == null || deliveryOtp.isEmpty) {
+                          final random = math.Random.secure();
+                          deliveryOtp = (100000 + random.nextInt(900000)).toString();
+                          extra['deliveryOtp'] = deliveryOtp;
+                          extra['deliveryOtpCreatedAt'] = FieldValue.serverTimestamp();
+                        }
+                      }
+
                       if (customerId != null && customerId.isNotEmpty) {
+                        final notifTitle = status == OrderStatuses.outForDelivery
+                            ? 'Out for Delivery'
+                            : 'Order Status Updated';
+                        final notifBody = (status == OrderStatuses.outForDelivery && deliveryOtp != null && deliveryOtp.isNotEmpty)
+                            ? 'Order #${order.orderNumber} is on the way. Delivery OTP: $deliveryOtp'
+                            : 'Order #${order.orderNumber} is now $status';
+
                         await firestore.createNotification(
                           userId: customerId,
-                          title: 'Order Status Updated',
-                          body: 'Order #${order.orderNumber} is now $status',
+                          title: notifTitle,
+                          body: notifBody,
                           orderId: order.id,
                         );
 
@@ -181,18 +217,8 @@ void showOrderDetailsDialog(String orderId) async {
                           orderNumber: order.orderNumber,
                           customerId: customerId,
                           status: status,
+                          deliveryOtp: deliveryOtp,
                         );
-                      }
-
-                      final Map<String, dynamic> extra = {};
-                      if (status == OrderStatuses.delivered) {
-                        extra['deliveredAt'] = FieldValue.serverTimestamp();
-                      } else if (status == OrderStatuses.confirmed) {
-                        extra['confirmedAt'] = FieldValue.serverTimestamp();
-                      } else if (status == OrderStatuses.packed) {
-                        extra['packedAt'] = FieldValue.serverTimestamp();
-                      } else if (status == OrderStatuses.outForDelivery) {
-                        extra['outForDeliveryAt'] = FieldValue.serverTimestamp();
                       }
 
                       await firestore.updateOrderStatus(

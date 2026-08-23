@@ -1,6 +1,7 @@
 const { onDocumentUpdated, onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
+const crypto = require("crypto");
 const {
   rateLimiterMiddleware,
   checkAccountLockout,
@@ -32,7 +33,7 @@ function normalizeOrderStatus(status) {
 /**
  * Builds the notification title, body, and payload data for a given order status.
  */
-function buildNotificationPayload(orderId, orderNumber, status) {
+function buildNotificationPayload(orderId, orderNumber, status, deliveryOtp) {
   const normalized = normalizeOrderStatus(status);
   const displayOrderNum = orderNumber || orderId;
 
@@ -50,7 +51,9 @@ function buildNotificationPayload(orderId, orderNumber, status) {
       break;
     case "out_for_delivery":
       title = "Out for Delivery";
-      body = `Your Tiruttani Quick order #${displayOrderNum} is on the way.`;
+      body = deliveryOtp
+        ? `Your Tiruttani Quick order #${displayOrderNum} is on the way. Delivery OTP: ${deliveryOtp}`
+        : `Your Tiruttani Quick order #${displayOrderNum} is on the way.`;
       break;
     case "delivered":
       title = "Order Delivered";
@@ -72,6 +75,7 @@ function buildNotificationPayload(orderId, orderNumber, status) {
       type: "order_status",
       orderId: orderId,
       status: normalized,
+      deliveryOtp: deliveryOtp || "",
       screen: "order_tracking"
     }
   };
@@ -133,8 +137,8 @@ async function sendFCMPush(tokens, orderNumber, notification) {
 
 /**
  * Core business logic for processing order status updates.
- * Compares before/after status, validates customerId, prevents duplicate notifications,
- * and dispatches FCM push notifications via Firebase Admin SDK.
+ * Generates secure delivery OTP on 'out_for_delivery' transition.
+ * FCM push notifications for order status are handled exclusively by the Cloudflare Worker.
  */
 async function handleOrderStatusUpdate(beforeData, afterData, orderId) {
   if (!beforeData || !afterData) {
@@ -152,50 +156,37 @@ async function handleOrderStatusUpdate(beforeData, afterData, orderId) {
   // 2. Validate customer identification
   const customerId = afterData.customerId || beforeData.customerId;
   if (!customerId) {
-    console.warn(`[Order Trigger] Order ${orderId} has no customerId. Skipping push notification.`);
+    console.warn(`[Order Trigger] Order ${orderId} has no customerId. Skipping.`);
     return { skipped: true, reason: "missing_customer_id" };
   }
 
-  // 3. Build notification copy
+  // 3. Generate secure delivery OTP when entering 'out_for_delivery' if not already present
+  let deliveryOtp = afterData.deliveryOtp || beforeData.deliveryOtp;
+  if (newStatusNorm === "out_for_delivery" && !deliveryOtp) {
+    deliveryOtp = crypto.randomInt(100000, 1000000).toString();
+    try {
+      if (admin.apps.length > 0 && orderId) {
+        await admin.firestore().collection("orders").doc(orderId).update({
+          deliveryOtp: deliveryOtp,
+          deliveryOtpCreatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        console.log(`[Order Trigger] Secure delivery OTP generated for order ${orderId}`);
+      }
+    } catch (dbErr) {
+      console.warn(`[Order Trigger] Could not persist delivery OTP for order ${orderId}:`, dbErr.message);
+    }
+  }
+
+  // 4. Build notification copy
   const orderNumber = afterData.orderNumber || beforeData.orderNumber || orderId;
-  const notification = buildNotificationPayload(orderId, orderNumber, afterData.status);
+  const notification = buildNotificationPayload(orderId, orderNumber, afterData.status, deliveryOtp);
 
   if (!notification) {
-    // E.g. status changed to pending or an unmapped internal status
     return { skipped: true, reason: "no_notification_for_status", status: afterData.status };
   }
 
-  // 4. Retrieve customer device FCM tokens from Firestore
-  const tokens = new Set();
-  try {
-    const userDoc = await admin.firestore().collection("users").doc(customerId).get();
-    if (userDoc.exists) {
-      const userData = userDoc.data();
-      if (userData?.fcmToken) {
-        tokens.add(userData.fcmToken);
-      }
-    }
-
-    // Also check multi-device fcmTokens subcollection
-    const tokenSubcollection = await admin.firestore().collection("users").doc(customerId).collection("fcmTokens").get();
-    tokenSubcollection.forEach((doc) => {
-      if (doc.id && doc.id.length > 10) {
-        tokens.add(doc.id);
-      }
-    });
-  } catch (dbError) {
-    console.warn(`[Order Trigger] Error querying FCM tokens for customer ${customerId}:`, dbError.message);
-  }
-
-  const tokenList = Array.from(tokens);
-  let fcmResult = { success: false, reason: "no_tokens" };
-
-  if (tokenList.length > 0) {
-    fcmResult = await sendFCMPush(tokenList, orderNumber, notification);
-  } else {
-    console.log(`[Order Trigger] No active FCM registration tokens for customer ${customerId}. Skipping push.`);
-  }
-
+  // Note: Push notifications are dispatched exclusively via the Cloudflare Worker from the Admin App,
+  // preventing duplicate FCM notifications.
   return {
     skipped: false,
     orderId,
@@ -203,8 +194,7 @@ async function handleOrderStatusUpdate(beforeData, afterData, orderId) {
     status: notification.canonicalStatus,
     title: notification.title,
     body: notification.body,
-    tokenCount: tokenList.length,
-    fcmResult
+    deliveryOtp,
   };
 }
 

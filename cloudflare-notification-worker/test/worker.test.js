@@ -38,6 +38,10 @@ test('Notification content generator produces required customer copy', () => {
   assert.equal(out.title, 'Out for Delivery');
   assert.equal(out.body, 'Your Tiruttani Quick order #TQ1001 is on the way.');
 
+  const outWithOtp = getNotificationContent(NOTIFICATION_STATUSES.OUT_FOR_DELIVERY, 'ord123', 'TQ1001', '584920');
+  assert.equal(outWithOtp.title, 'Out for Delivery');
+  assert.equal(outWithOtp.body, 'Your Tiruttani Quick order #TQ1001 is on the way. Delivery OTP: 584920');
+
   const del = getNotificationContent(NOTIFICATION_STATUSES.DELIVERED, 'ord123', 'TQ1001');
   assert.equal(del.title, 'Order Delivered');
   assert.equal(del.body, 'Your Tiruttani Quick order #TQ1001 has been delivered.');
@@ -50,17 +54,19 @@ test('Notification content generator produces required customer copy', () => {
 test('FCM HTTP v1 message builder generates valid Android High Priority structure', () => {
   const msg = buildFcmV1Message({
     token: 'fcm_test_token_12345',
-    statusKey: NOTIFICATION_STATUSES.ACCEPTED,
+    statusKey: NOTIFICATION_STATUSES.OUT_FOR_DELIVERY,
     orderId: 'order_abc_999',
     orderNumber: 'TQ999',
+    deliveryOtp: '849201',
   });
 
   assert.equal(msg.message.token, 'fcm_test_token_12345');
-  assert.equal(msg.message.notification.title, 'Order Accepted');
-  assert.equal(msg.message.notification.body, 'Your Tiruttani Quick order #TQ999 has been accepted.');
+  assert.equal(msg.message.notification.title, 'Out for Delivery');
+  assert.equal(msg.message.notification.body, 'Your Tiruttani Quick order #TQ999 is on the way. Delivery OTP: 849201');
   assert.equal(msg.message.data.type, 'order_status');
   assert.equal(msg.message.data.orderId, 'order_abc_999');
-  assert.equal(msg.message.data.status, 'accepted');
+  assert.equal(msg.message.data.status, 'out_for_delivery');
+  assert.equal(msg.message.data.deliveryOtp, '849201');
   assert.equal(msg.message.data.screen, 'order_tracking');
   assert.equal(msg.message.android.priority, 'high');
   assert.equal(msg.message.android.notification.channel_id, 'orders_channel');

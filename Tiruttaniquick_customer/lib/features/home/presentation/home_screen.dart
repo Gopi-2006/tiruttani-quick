@@ -21,6 +21,7 @@ import '../../cart/presentation/cart_screen.dart';
 import '../../orders/presentation/my_orders_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../../core/widgets/skeleton_loader.dart';
+import '../../../core/widgets/voice_search_dialog.dart';
 
 class HomeScreen extends StatefulWidget {
   final int initialTab;
@@ -32,6 +33,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late int _selectedIndex;
+  bool _isNavVisible = true;
 
   @override
   void initState() {
@@ -47,56 +49,81 @@ class _HomeScreenState extends State<HomeScreen> {
     if (oldWidget.initialTab != widget.initialTab) {
       setState(() {
         _selectedIndex = widget.initialTab;
+        _isNavVisible = true;
       });
     }
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    return ScrollHideBottomNav.handleScrollNotification(
+      notification: notification,
+      isCurrentlyVisible: _isNavVisible,
+      onVisibilityChanged: (newVisibility) {
+        if (mounted) {
+          setState(() => _isNavVisible = newVisibility);
+        }
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: ChangeNotifierProvider(
-        create: (_) => HomeSearchProvider(),
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: const [
-            _HomeBody(),
-            CategoriesTabScreen(),
-            TopPicksTabScreen(),
-            MyOrdersScreen(),
-            CartScreen(),
-          ],
+      extendBody: true,
+      body: NotificationListener<ScrollNotification>(
+        onNotification: _onScrollNotification,
+        child: ChangeNotifierProvider(
+          create: (_) => HomeSearchProvider(),
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: const [
+              _HomeBody(),
+              CategoriesTabScreen(),
+              TopPicksTabScreen(),
+              MyOrdersScreen(),
+              CartScreen(),
+            ],
+          ),
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) => setState(() => _selectedIndex = index),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.grid_view_outlined),
-            selectedIcon: Icon(Icons.grid_view),
-            label: 'Categories',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.star_outline),
-            selectedIcon: Icon(Icons.star),
-            label: 'Top Picks',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'Orders',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.shopping_cart_outlined),
-            selectedIcon: Icon(Icons.shopping_cart),
-            label: 'Cart',
-          ),
-        ],
+      bottomNavigationBar: ScrollHideBottomNav(
+        isVisible: _isNavVisible,
+        child: NavigationBar(
+          selectedIndex: _selectedIndex,
+          onDestinationSelected: (index) {
+            setState(() {
+              _selectedIndex = index;
+              _isNavVisible = true;
+            });
+          },
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
+              label: 'Home',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.grid_view_outlined),
+              selectedIcon: Icon(Icons.grid_view),
+              label: 'Categories',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.star_outline),
+              selectedIcon: Icon(Icons.star),
+              label: 'Top Picks',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.receipt_long_outlined),
+              selectedIcon: Icon(Icons.receipt_long),
+              label: 'Orders',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.shopping_cart_outlined),
+              selectedIcon: Icon(Icons.shopping_cart),
+              label: 'Cart',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -228,7 +255,12 @@ class _HomeBodyState extends State<_HomeBody> {
     );
   }
 
-  Widget _buildBestSellersSection(bool loading, List<ProductModel> products, {bool isLoadingMore = false}) {
+  Widget _buildBestSellersSection(
+    bool loading,
+    List<ProductModel> products, {
+    bool isLoadingMore = false,
+    String searchQuery = '',
+  }) {
     if (loading && products.isEmpty) {
       return GridView.builder(
         shrinkWrap: true,
@@ -246,9 +278,36 @@ class _HomeBodyState extends State<_HomeBody> {
     }
 
     if (products.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(AppDimensions.paddingLarge),
-        child: Text(Messages.noProductsHome),
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingLarge, vertical: 32),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                searchQuery.isNotEmpty ? Icons.search_off_rounded : Icons.inventory_2_outlined,
+                size: 52,
+                color: AppColors.muted,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                searchQuery.isNotEmpty
+                    ? 'No products found for "$searchQuery"'
+                    : 'No products available right now.',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.text),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                searchQuery.isNotEmpty
+                    ? 'Try searching by a different name, category, or Tamil name.'
+                    : 'Please check back soon.',
+                style: const TextStyle(fontSize: 13, color: AppColors.muted),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -418,28 +477,15 @@ class _HomeBodyState extends State<_HomeBody> {
                         prefixIcon: const Icon(AppIcons.search, color: AppColors.textSecondary, size: 20),
                         suffixIcon: IconButton(
                           icon: const Icon(Icons.mic, color: AppColors.primary, size: 20),
-                          onPressed: () {
-                            showDialog(
+                          onPressed: () async {
+                            final query = await showDialog<String>(
                               context: context,
-                              builder: (context) => AlertDialog(
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                title: const Text('Voice Search'),
-                                content: const Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.mic, size: 48, color: AppColors.primary),
-                                    SizedBox(height: 12),
-                                    Text('Listening... Say product name', style: TextStyle(color: AppColors.textSecondary)),
-                                  ],
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text('Cancel', style: TextStyle(color: AppColors.primary)),
-                                  ),
-                                ],
-                              ),
+                              builder: (context) => const VoiceSearchDialog(),
                             );
+                            if (query != null && query.isNotEmpty) {
+                              _searchController.text = query;
+                              searchProvider.query = query;
+                            }
                           },
                         ),
                         border: InputBorder.none,
@@ -509,6 +555,7 @@ class _HomeBodyState extends State<_HomeBody> {
             loading,
             products,
             isLoadingMore: !isSearch && startup.isLoadingMore,
+            searchQuery: isSearch ? searchProvider.query : '',
           ),
           const SizedBox(height: AppDimensions.spacingLarge),
         ],

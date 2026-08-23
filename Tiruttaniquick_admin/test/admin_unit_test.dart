@@ -53,6 +53,13 @@ void main() {
       expect(provider.isAuthenticated, isFalse);
     });
 
+    test('CurrentUserProvider initComplete resolves and handles initialization lifecycle', () async {
+      final provider = CurrentUserProvider();
+      await provider.init();
+      await provider.initComplete;
+      expect(provider.loading, isFalse);
+    });
+
     test('ShopSettingsModel serializes and deserializes correctly', () {
       const defaultSettings = ShopSettingsModel();
       expect(defaultSettings.deliveryAvailable, isTrue);

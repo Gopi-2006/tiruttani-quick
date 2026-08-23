@@ -6,6 +6,7 @@ class ProductModel {
   final String name;
   final String nameTamil;
   final String imageUrl;
+  final String blurHash;
   final double price;
   final String categoryId;
   final String unit;
@@ -61,6 +62,7 @@ class ProductModel {
     required this.name,
     this.nameTamil = '',
     required this.imageUrl,
+    this.blurHash = '',
     required this.price,
     required this.categoryId,
     required this.unit,
@@ -125,6 +127,7 @@ class ProductModel {
       name: data['productName'] as String? ?? data['name'] as String? ?? 'Product',
       nameTamil: data['productNameTamil'] as String? ?? data['nameTamil'] as String? ?? '',
       imageUrl: data['imageUrl'] as String? ?? '',
+      blurHash: data['blurHash'] as String? ?? '',
       price: priceVal,
       categoryId: data['category'] as String? ?? data['categoryId'] as String? ?? '',
       unit: data['unit'] as String? ?? '',
@@ -177,6 +180,7 @@ class ProductModel {
       'productNameTamil': nameTamil,
       'nameTamil': nameTamil,
       'imageUrl': imageUrl,
+      'blurHash': blurHash,
       'sellingPrice': price,
       'price': price,
       'category': categoryId,
@@ -236,6 +240,7 @@ class ProductModel {
     String? name,
     String? nameTamil,
     String? imageUrl,
+    String? blurHash,
     double? price,
     String? categoryId,
     String? unit,
@@ -285,6 +290,7 @@ class ProductModel {
       name: name ?? this.name,
       nameTamil: nameTamil ?? this.nameTamil,
       imageUrl: imageUrl ?? this.imageUrl,
+      blurHash: blurHash ?? this.blurHash,
       price: price ?? this.price,
       categoryId: categoryId ?? this.categoryId,
       unit: unit ?? this.unit,

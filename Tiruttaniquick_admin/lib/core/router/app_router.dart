@@ -14,10 +14,11 @@ final router = GoRouter(
     final location = state.matchedLocation;
     final currentUser = currentUserProvider;
 
-    // While resolving initial auth and profile state, stay on splash screen
-    if (currentUser.loading) {
-      return location == '/splash' ? null : '/splash';
-    }
+    // Do not intercept splash screen
+    if (location == '/splash') return null;
+
+    // Do not redirect while resolving auth state in background
+    if (currentUser.loading) return null;
 
     final isAuthenticated = currentUser.isAuthenticated;
 
@@ -26,8 +27,8 @@ final router = GoRouter(
       return location == AppRoutes.login ? null : AppRoutes.login;
     }
 
-    // Authenticated user -> Route directly to Admin Dashboard
-    if (location == '/splash' || location == AppRoutes.login) {
+    // Authenticated user on Login -> Route directly to Admin Dashboard
+    if (location == AppRoutes.login) {
       return AppRoutes.admin;
     }
 

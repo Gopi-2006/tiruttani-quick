@@ -6,13 +6,32 @@ import 'package:flutter/foundation.dart';
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 
 class CurrentUserProvider extends ChangeNotifier {
-  FirebaseFirestore get _db => FirebaseFirestore.instance;
-  FirebaseAuth get _auth => FirebaseAuth.instance;
+  FirebaseFirestore? get _db {
+    try {
+      return FirebaseFirestore.instance;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  FirebaseAuth? get _auth {
+    try {
+      return FirebaseAuth.instance;
+    } catch (_) {
+      return null;
+    }
+  }
 
   User? _firebaseUser;
   UserProfileModel? _profile;
   bool _loading = true;
   StreamSubscription<User?>? _subscription;
+  bool _isInitStarted = false;
+
+  /// Completer that resolves once the first auth state has been fully processed.
+  /// Splash screen awaits this to avoid navigating before auth is resolved.
+  final Completer<void> _initCompleter = Completer<void>();
+  Future<void> get initComplete => _initCompleter.future;
 
   User? get firebaseUser => _firebaseUser;
   UserProfileModel? get profile => _profile;
@@ -21,18 +40,34 @@ class CurrentUserProvider extends ChangeNotifier {
   String get role => _profile?.role ?? '';
 
   CurrentUserProvider() {
-    _firebaseUser = _auth.currentUser;
-    if (_firebaseUser != null) {
-      NotificationService.instance.setupUser(_firebaseUser!.uid, 'customer');
+    try {
+      _firebaseUser = _auth?.currentUser;
+      if (_firebaseUser != null) {
+        NotificationService.instance.setupUser(_firebaseUser!.uid, 'customer');
+      }
+    } catch (e) {
+      debugPrint('[CurrentUserProvider] Non-fatal init warning: $e');
     }
   }
 
   void init() {
-    _subscription ??= _auth.authStateChanges().listen((user) async {
+    if (_isInitStarted) return;
+    _isInitStarted = true;
+
+    final auth = _auth;
+    if (auth == null) {
+      _loading = false;
+      if (!_initCompleter.isCompleted) _initCompleter.complete();
+      notifyListeners();
+      return;
+    }
+
+    _subscription = auth.authStateChanges().listen((user) async {
       _firebaseUser = user;
       if (user == null) {
         _profile = null;
         _loading = false;
+        if (!_initCompleter.isCompleted) _initCompleter.complete();
         notifyListeners();
         return;
       }
@@ -46,23 +81,13 @@ class CurrentUserProvider extends ChangeNotifier {
 
       try {
         final stopwatch = AuthPerformanceLogger.start('Load Customer Profile (${user.uid})');
-        final snapshot = await _db.collection('users').doc(user.uid).get();
+        final db = _db;
+        final snapshot = db != null ? await db.collection('users').doc(user.uid).get() : null;
         AuthPerformanceLogger.stopAndLog(stopwatch, 'Load Customer Profile');
 
-        final profile = snapshot.exists
+        final profile = (snapshot != null && snapshot.exists && snapshot.data() != null)
             ? UserProfileModel.fromFirestore(snapshot.id, snapshot.data()!)
             : null;
-
-        // Allow only role == customer (or if the user document is not created yet, e.g. during sign up)
-        if (profile != null && profile.role.toLowerCase() != 'customer') {
-          debugPrint('[CurrentUserProvider] Invalid role detected: "${profile.role}". Signing out.');
-          _profile = null;
-          _firebaseUser = null;
-          _loading = false;
-          notifyListeners();
-          await _auth.signOut();
-          return;
-        }
 
         _profile = profile;
       } catch (e) {
@@ -71,6 +96,7 @@ class CurrentUserProvider extends ChangeNotifier {
       }
 
       _loading = false;
+      if (!_initCompleter.isCompleted) _initCompleter.complete();
       notifyListeners();
     });
   }

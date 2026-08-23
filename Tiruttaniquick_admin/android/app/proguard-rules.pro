@@ -24,16 +24,23 @@
 -dontwarn com.google.gson.**
 
 # ==========================================
-# 3. AndroidX / WorkManager / Room
+# 3. AndroidX / WorkManager / Room / SQLite
 # ==========================================
--dontwarn androidx.work.**
--dontwarn androidx.room.**
--dontwarn androidx.startup.**
--dontwarn androidx.**
-
+# AndroidX components bundle consumer rules. We preserve reflectively instantiated worker and DB constructors.
+-keep public class * extends androidx.work.Worker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
 -keep public class * extends androidx.work.ListenableWorker {
     public <init>(android.content.Context, androidx.work.WorkerParameters);
 }
+-keep public class * extends androidx.room.RoomDatabase {
+    public <init>();
+}
+-dontwarn androidx.work.**
+-dontwarn androidx.room.**
+-dontwarn androidx.startup.**
+-dontwarn androidx.sqlite.**
+-dontwarn androidx.**
 
 # ==========================================
 # 4. Firebase & Google Play Services
@@ -47,8 +54,8 @@
 # 5. Glide & Image Handling
 # ==========================================
 -dontwarn com.bumptech.glide.**
--keep public class * implements com.bumptech.glide.module.GlideModule
--keep public class * extends com.bumptech.glide.module.AppGlideModule {
+-keep public class ** implements com.bumptech.glide.module.GlideModule
+-keep public class ** extends com.bumptech.glide.module.AppGlideModule {
     <init>(...);
 }
 -keep public enum com.bumptech.glide.load.ImageHeaderParser$** {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 import '../../../services/startup_provider.dart';
+import '../../../services/current_user_provider.dart';
 
 import '../../../services/onboarding_service.dart';
 
@@ -159,9 +160,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     // Start background loading of startup data concurrently during the splash animation
     startupProvider.runInitialization(context);
 
-    // Hard fallback safety timer: ensure splash never hangs on screen beyond 2.5s
-    Future.delayed(const Duration(milliseconds: 2500), () {
+    // Hard fallback safety timer: ensure splash never hangs on screen beyond 5s
+    Future.delayed(const Duration(milliseconds: 5000), () {
       if (mounted && !_navigated) {
+        debugPrint('[Splash] Hard safety timer fired — forcing navigation.');
         _checkNavigation();
       }
     });
@@ -180,6 +182,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         context.go(AppRoutes.onboarding);
         return;
       }
+
+      // CRITICAL FIX: Wait for auth state to fully resolve before navigating.
+      // Without this, on cold start the splash would navigate to /home while
+      // auth is still loading, causing the router redirect to flash to /login.
+      try {
+        await currentUserProvider.initComplete.timeout(
+          const Duration(seconds: 4),
+        );
+      } catch (_) {
+        debugPrint('[Splash] Auth resolution timed out — proceeding with current state.');
+      }
+      if (!mounted) return;
 
       // Check if user launched the app by tapping a notification
       final pendingRoute = startupProvider.consumePendingNotificationRoute();

@@ -34,6 +34,7 @@ class NotificationSenderService {
     required String status,
     required String customerId,
     String? orderNumber,
+    String? deliveryOtp,
   }) async {
     if (orderId.isEmpty || status.isEmpty || customerId.isEmpty) {
       debugPrint('[NotificationSenderService] Missing required parameters; skipping push.');
@@ -69,6 +70,7 @@ class NotificationSenderService {
         'customerId': customerId,
         'status': status,
         'tokens': tokens,
+        if (deliveryOtp != null && deliveryOtp.isNotEmpty) 'deliveryOtp': deliveryOtp,
       };
 
       final response = await http

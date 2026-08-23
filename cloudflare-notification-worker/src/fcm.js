@@ -139,6 +139,7 @@ export async function sendFcmNotification({
   statusKey,
   orderId,
   orderNumber,
+  deliveryOtp,
 }) {
   if (!tokens || tokens.length === 0) {
     return { delivered: 0, failed: 0, invalidTokens: [], results: [] };
@@ -166,6 +167,7 @@ export async function sendFcmNotification({
         statusKey,
         orderId,
         orderNumber,
+        deliveryOtp,
       });
 
       try {

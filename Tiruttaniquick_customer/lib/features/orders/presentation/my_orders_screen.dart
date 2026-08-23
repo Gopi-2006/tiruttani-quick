@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -24,20 +25,27 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with SingleTickerProvid
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  Timer? _debounceTimer;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text.trim();
+      _debounceTimer?.cancel();
+      _debounceTimer = Timer(const Duration(milliseconds: 250), () {
+        if (mounted) {
+          setState(() {
+            _searchQuery = _searchController.text.trim();
+          });
+        }
       });
     });
   }
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();

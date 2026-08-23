@@ -60,6 +60,7 @@ describe("FCM Notification Message & Custom Data Builder", () => {
       type: "order_status",
       orderId: "order_doc_123",
       status: "accepted",
+      deliveryOtp: "",
       screen: "order_tracking"
     });
   });
@@ -74,11 +75,12 @@ describe("FCM Notification Message & Custom Data Builder", () => {
       type: "order_status",
       orderId: "order_doc_123",
       status: "packed",
+      deliveryOtp: "",
       screen: "order_tracking"
     });
   });
 
-  test("builds Out for Delivery FCM notification", () => {
+  test("builds Out for Delivery FCM notification without OTP", () => {
     const payload = buildNotificationPayload(orderId, orderNumber, "Out for Delivery");
     assert.notEqual(payload, null);
     assert.equal(payload.title, "Out for Delivery");
@@ -88,6 +90,22 @@ describe("FCM Notification Message & Custom Data Builder", () => {
       type: "order_status",
       orderId: "order_doc_123",
       status: "out_for_delivery",
+      deliveryOtp: "",
+      screen: "order_tracking"
+    });
+  });
+
+  test("builds Out for Delivery FCM notification with OTP", () => {
+    const payload = buildNotificationPayload(orderId, orderNumber, "Out for Delivery", "654321");
+    assert.notEqual(payload, null);
+    assert.equal(payload.title, "Out for Delivery");
+    assert.equal(payload.body, "Your Tiruttani Quick order #TQ-9876 is on the way. Delivery OTP: 654321");
+    assert.equal(payload.canonicalStatus, "out_for_delivery");
+    assert.deepEqual(payload.data, {
+      type: "order_status",
+      orderId: "order_doc_123",
+      status: "out_for_delivery",
+      deliveryOtp: "654321",
       screen: "order_tracking"
     });
   });
@@ -102,6 +120,7 @@ describe("FCM Notification Message & Custom Data Builder", () => {
       type: "order_status",
       orderId: "order_doc_123",
       status: "delivered",
+      deliveryOtp: "",
       screen: "order_tracking"
     });
   });
@@ -116,6 +135,7 @@ describe("FCM Notification Message & Custom Data Builder", () => {
       type: "order_status",
       orderId: "order_doc_123",
       status: "cancelled",
+      deliveryOtp: "",
       screen: "order_tracking"
     });
   });

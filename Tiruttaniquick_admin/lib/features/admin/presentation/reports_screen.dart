@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -644,14 +645,52 @@ class _OrderReportsTabState extends State<OrderReportsTab> {
               initiallyExpanded: true,
               onChangeStatus: (status) async {
                 if (status == null) return;
-                await widget.firestore.updateOrderStatus(orderId: order.id, status: status);
+                final Map<String, dynamic> extra = {};
+                String? deliveryOtp = order.deliveryOtp;
+
+                if (status == OrderStatuses.delivered) {
+                  extra['deliveredAt'] = FieldValue.serverTimestamp();
+                } else if (status == OrderStatuses.confirmed) {
+                  extra['confirmedAt'] = FieldValue.serverTimestamp();
+                } else if (status == OrderStatuses.packed) {
+                  extra['packedAt'] = FieldValue.serverTimestamp();
+                } else if (status == OrderStatuses.outForDelivery) {
+                  extra['outForDeliveryAt'] = FieldValue.serverTimestamp();
+                  if (deliveryOtp == null || deliveryOtp.isEmpty) {
+                    final random = math.Random.secure();
+                    deliveryOtp = (100000 + random.nextInt(900000)).toString();
+                    extra['deliveryOtp'] = deliveryOtp;
+                    extra['deliveryOtpCreatedAt'] = FieldValue.serverTimestamp();
+                  }
+                }
+
+                await widget.firestore.updateOrderStatus(
+                  orderId: order.id,
+                  status: status,
+                  extra: extra,
+                );
 
                 if (order.customerId.isNotEmpty) {
+                  final notifTitle = status == OrderStatuses.outForDelivery
+                      ? 'Out for Delivery'
+                      : 'Order Status Updated';
+                  final notifBody = (status == OrderStatuses.outForDelivery && deliveryOtp != null && deliveryOtp.isNotEmpty)
+                      ? 'Order #${order.orderNumber} is on the way. Delivery OTP: $deliveryOtp'
+                      : 'Order #${order.orderNumber} is now $status';
+
+                  await widget.firestore.createNotification(
+                    userId: order.customerId,
+                    title: notifTitle,
+                    body: notifBody,
+                    orderId: order.id,
+                  );
+
                   NotificationSenderService.instance.sendOrderStatusNotification(
                     orderId: order.id,
                     orderNumber: order.orderNumber,
                     customerId: order.customerId,
                     status: status,
+                    deliveryOtp: deliveryOtp,
                   );
                 }
 
@@ -755,7 +794,7 @@ class _OrderReportsTabState extends State<OrderReportsTab> {
         debugPrint('[REPORTS] Documents received: ${allOrders.length}');
 
         return StreamBuilder<QuerySnapshot>(
-          stream: _db.collectionGroup('order_items').snapshots(),
+          stream: _db.collectionGroup('order_items').limit(500).snapshots(),
           builder: (context, itemsSnapshot) {
             if (itemsSnapshot.hasError) {
               debugPrint('[REPORTS] Warning: order_items stream error: ${itemsSnapshot.error}');

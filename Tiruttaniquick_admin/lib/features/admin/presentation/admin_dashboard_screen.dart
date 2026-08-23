@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -701,11 +702,38 @@ class _OrdersTabState extends State<_OrdersTab> {
             final customerId = order.customerId.isNotEmpty
                 ? order.customerId
                 : (await _getCustomerId(order.id) ?? '');
+
+            final Map<String, dynamic> extra = {};
+            String? deliveryOtp = order.deliveryOtp;
+
+            if (status == OrderStatuses.delivered) {
+              extra['deliveredAt'] = FieldValue.serverTimestamp();
+            } else if (status == OrderStatuses.confirmed) {
+              extra['confirmedAt'] = FieldValue.serverTimestamp();
+            } else if (status == OrderStatuses.packed) {
+              extra['packedAt'] = FieldValue.serverTimestamp();
+            } else if (status == OrderStatuses.outForDelivery) {
+              extra['outForDeliveryAt'] = FieldValue.serverTimestamp();
+              if (deliveryOtp == null || deliveryOtp.isEmpty) {
+                final random = math.Random.secure();
+                deliveryOtp = (100000 + random.nextInt(900000)).toString();
+                extra['deliveryOtp'] = deliveryOtp;
+                extra['deliveryOtpCreatedAt'] = FieldValue.serverTimestamp();
+              }
+            }
+
             if (customerId.isNotEmpty) {
+              final notifTitle = status == OrderStatuses.outForDelivery
+                  ? 'Out for Delivery'
+                  : 'Order Status Updated';
+              final notifBody = (status == OrderStatuses.outForDelivery && deliveryOtp != null && deliveryOtp.isNotEmpty)
+                  ? 'Order #${order.orderNumber} is on the way. Delivery OTP: $deliveryOtp'
+                  : 'Order #${order.orderNumber} is now $status';
+
               await widget.firestore.createNotification(
                 userId: customerId,
-                title: 'Order Status Updated',
-                body: 'Order #${order.orderNumber} is now $status',
+                title: notifTitle,
+                body: notifBody,
                 orderId: order.id,
               );
 
@@ -715,18 +743,8 @@ class _OrdersTabState extends State<_OrdersTab> {
                 orderNumber: order.orderNumber,
                 customerId: customerId,
                 status: status,
+                deliveryOtp: deliveryOtp,
               );
-            }
-
-            final Map<String, dynamic> extra = {};
-            if (status == OrderStatuses.delivered) {
-              extra['deliveredAt'] = FieldValue.serverTimestamp();
-            } else if (status == OrderStatuses.confirmed) {
-              extra['confirmedAt'] = FieldValue.serverTimestamp();
-            } else if (status == OrderStatuses.packed) {
-              extra['packedAt'] = FieldValue.serverTimestamp();
-            } else if (status == OrderStatuses.outForDelivery) {
-              extra['outForDeliveryAt'] = FieldValue.serverTimestamp();
             }
 
             await widget.firestore.updateOrderStatus(
@@ -952,7 +970,14 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
                     if (value == null || value.trim().length != 6) {
                       return ValidationMessages.enterVerificationCode;
                     }
-                    if (value.trim().toUpperCase() != order.verificationCode.toUpperCase()) {
+                    final input = value.trim().toUpperCase();
+                    final expectedCode = order.verificationCode.trim().toUpperCase();
+                    final expectedOtp = (order.deliveryOtp ?? '').trim().toUpperCase();
+
+                    final isValid = (expectedOtp.isNotEmpty && input == expectedOtp) ||
+                        (expectedCode.isNotEmpty && input == expectedCode);
+
+                    if (!isValid) {
                       return ValidationMessages.invalidVerificationCode;
                     }
                     return null;
@@ -4870,7 +4895,7 @@ class _CustomersTabState extends State<_CustomersTab> {
         ),
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: db.collection('users').snapshots(),
+            stream: db.collection('users').limit(200).snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData) {
                 if (!ConnectivityProvider.instance.isOnline) {

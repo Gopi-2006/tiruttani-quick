@@ -21,4 +21,5 @@ dependencies:
   sendotp_flutter_sdk: ^0.0.2
   http: ^1.2.0
   shared_preferences: ^2.5.5
+  flutter_blurhash: ^0.9.1
 
