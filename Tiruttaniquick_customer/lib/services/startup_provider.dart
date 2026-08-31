@@ -2,14 +2,12 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 
 import '../firebase_options.dart';
-import '../core/router/app_router.dart';
 import 'current_user_provider.dart';
 import 'service_area_provider.dart';
 import 'admob_service.dart';
@@ -74,14 +72,6 @@ class StartupProvider extends ChangeNotifier {
         }
       } catch (e) {
         debugPrint('[Startup Log] Error ensuring Firebase initialization: $e');
-      }
-
-      // Register background message handler immediately after core initialization
-      try {
-        FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-        debugPrint('[Startup Log] Background messaging handler registered.');
-      } catch (e) {
-        debugPrint('[Startup Log] Failed to register background messaging handler: $e');
       }
 
       debugPrint('[Startup Log] Checking connectivity status...');
@@ -385,65 +375,7 @@ class StartupProvider extends ChangeNotifier {
       debugPrint('[Startup Log] Firebase App Check activation non-fatal error: $e\n$stack');
     }
 
-    // 3. Initialize NotificationService
-    try {
-      debugPrint('[Startup Log] Sub-step 3: Initializing Notification Service...');
-      try {
-        FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-      } catch (e) {
-        debugPrint('[Startup Log] Background messaging handler registration non-fatal error: $e');
-      }
-      await NotificationService.instance.initialize(
-        onNotificationTap: (payload) {
-          debugPrint('[Startup Log] Notification Tapped: $payload');
-          final type = payload['type']?.toString() ?? '';
-          final screen = payload['screen']?.toString() ?? '';
-          final orderId = payload['orderId']?.toString() ?? '';
-          final productId = payload['productId']?.toString() ?? '';
-          final offerId = payload['offerId']?.toString() ?? '';
-
-          String targetRoute = AppRoutes.home;
-          if (type == 'order_status' || type == 'order' || screen == 'order_tracking') {
-            targetRoute = orderId.isNotEmpty ? '${AppRoutes.myOrders}/$orderId' : AppRoutes.myOrders;
-          } else if (type == 'promotion') {
-            if (productId.isNotEmpty) {
-              targetRoute = '/product/$productId';
-            } else if (offerId.isNotEmpty) {
-              targetRoute = '/offer/$offerId';
-            }
-          } else if (type == 'general' || screen == 'home') {
-            targetRoute = AppRoutes.home;
-          } else if (orderId.isNotEmpty) {
-            targetRoute = '${AppRoutes.myOrders}/$orderId';
-          }
-
-          if (!_isInitialized) {
-            _pendingNotificationRoute = targetRoute;
-          } else {
-            router.push(targetRoute);
-          }
-        },
-      );
-
-      debugPrint('[Startup Log] Notification Service initialized.');
-    } catch (e, stack) {
-      debugPrint('[Startup Log] Notification Service initialization non-fatal error: $e\n$stack');
-    }
   }
 }
 
 final startupProvider = StartupProvider();
-
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  try {
-    WidgetsFlutterBinding.ensureInitialized();
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
-  } catch (e) {
-    debugPrint('[Background Messaging Error] $e');
-  }
-}

@@ -138,7 +138,7 @@ async function sendFCMPush(tokens, orderNumber, notification) {
 /**
  * Core business logic for processing order status updates.
  * Generates secure delivery OTP on 'out_for_delivery' transition.
- * FCM push notifications for order status are handled exclusively by the Cloudflare Worker.
+ * Sends FCM push notifications to customer devices directly (server-side fallback).
  */
 async function handleOrderStatusUpdate(beforeData, afterData, orderId) {
   if (!beforeData || !afterData) {
@@ -185,8 +185,57 @@ async function handleOrderStatusUpdate(beforeData, afterData, orderId) {
     return { skipped: true, reason: "no_notification_for_status", status: afterData.status };
   }
 
-  // Note: Push notifications are dispatched exclusively via the Cloudflare Worker from the Admin App,
-  // preventing duplicate FCM notifications.
+  // 5. Collect customer FCM tokens with multi-layer fallback
+  //    Layer A: token stored directly in the order document at checkout
+  //    Layer B: tokens in the customer's /users/{uid} document
+  //    Layer C: tokens in the /users/{uid}/fcmTokens subcollection
+  const tokenSet = new Set();
+  try {
+    // Layer A — order-level token
+    const orderToken = afterData.customerFcmToken || beforeData.customerFcmToken;
+    if (orderToken && orderToken.length > 10) tokenSet.add(orderToken);
+
+    // Layer B — user document
+    const userDoc = await admin.firestore().collection("users").doc(customerId).get();
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      if (userData?.fcmToken && userData.fcmToken.length > 10) {
+        tokenSet.add(userData.fcmToken);
+      }
+      if (Array.isArray(userData?.fcmTokens)) {
+        userData.fcmTokens.forEach((t) => { if (t && t.length > 10) tokenSet.add(t); });
+      }
+    }
+
+    // Layer C — fcmTokens subcollection (multi-device)
+    const subSnap = await admin.firestore()
+      .collection("users").doc(customerId)
+      .collection("fcmTokens").limit(10).get();
+    subSnap.forEach((doc) => {
+      const t = doc.data()?.token || doc.id;
+      if (t && t.length > 10) tokenSet.add(t);
+    });
+  } catch (tokenErr) {
+    console.warn(`[Order Trigger] Error collecting customer tokens for ${customerId}:`, tokenErr.message);
+  }
+
+  const tokenList = Array.from(tokenSet);
+  if (tokenList.length === 0) {
+    console.warn(`[Order Trigger] No customer tokens found for ${customerId}; skipping FCM push for order ${orderId}`);
+    return {
+      skipped: false,
+      orderId,
+      customerId,
+      status: notification.canonicalStatus,
+      fcmResult: { skipped: true, reason: "no_customer_tokens" },
+      deliveryOtp,
+    };
+  }
+
+  // 6. Send FCM push to customer devices
+  console.log(`[Order Trigger] Sending customer FCM push for order ${orderId} (${notification.canonicalStatus}) to ${tokenList.length} token(s)`);
+  const fcmResult = await sendFCMPush(tokenList, orderNumber, notification);
+
   return {
     skipped: false,
     orderId,
@@ -195,8 +244,10 @@ async function handleOrderStatusUpdate(beforeData, afterData, orderId) {
     title: notification.title,
     body: notification.body,
     deliveryOtp,
+    fcmResult,
   };
 }
+
 
 /**
  * Handles newly created orders by notifying Admin devices via FCM.
@@ -269,15 +320,15 @@ async function handleOrderCreated(orderData, orderId) {
       android: {
         priority: "high",
         notification: {
-          channelId: "admin_new_orders_v2",
-          sound: "new_order_alert",
+          channelId: "admin_new_orders_v3",
+          sound: "order_received",
           clickAction: "FLUTTER_NOTIFICATION_CLICK",
         },
       },
       apns: {
         payload: {
           aps: {
-            sound: "new_order_alert.wav",
+            sound: "order_received.mp3",
             badge: 1,
           },
         },

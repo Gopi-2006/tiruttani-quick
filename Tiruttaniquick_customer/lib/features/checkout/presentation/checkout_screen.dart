@@ -336,6 +336,50 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+  // ─── Error classification helpers ────────────────────────────────────────
+
+  /// Returns `true` for transient Firestore errors that are safe to retry.
+  /// These are always network/infrastructure issues — never data/logic errors.
+  bool _isTransientFirestoreError(Object e) {
+    if (e is FirebaseException) {
+      return e.code == 'unavailable' || e.code == 'deadline-exceeded';
+    }
+    return false;
+  }
+
+  /// Maps Firebase and app-level errors to user-friendly strings.
+  ///
+  /// App-logic [Exception]s (e.g. out-of-stock, delivery unavailable) already
+  /// contain human-readable messages and are returned as-is.
+  /// Raw Firebase error strings are never shown to the customer.
+  String _friendlyOrderError(Object e) {
+    if (e is FirebaseException) {
+      switch (e.code) {
+        case 'unavailable':
+        case 'deadline-exceeded':
+          return 'Unable to place your order right now. '
+              'Please check your internet connection and try again.';
+        case 'permission-denied':
+          return 'Order placement failed due to a permission issue. '
+              'Please log out and log in again.';
+        case 'unauthenticated':
+          return 'You must be logged in to place an order.';
+        case 'already-exists':
+          return 'This order may have already been placed. '
+              'Please check your orders before trying again.';
+        case 'invalid-argument':
+          return 'There was a problem with your order details. Please try again.';
+        default:
+          return 'Unable to place your order. Please try again.';
+      }
+    }
+    // App-logic exceptions are already user-friendly (stock, delivery, etc.)
+    final raw = e.toString();
+    return raw.startsWith('Exception: ') ? raw.substring(11) : raw;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   void _setPayment(String? value) {
     if (value == null) return;
     if (value != PaymentMethods.cod) {
@@ -456,164 +500,222 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       int totalProductsSold = 0;
       double totalDiscountAmount = 0.0;
 
-      await db.runTransaction((transaction) async {
-        // 2. Race condition protection: In-transaction atomic verification of delivery availability
-        final settingsDocRef = db.collection('shop_settings').doc('config');
-        final settingsDoc = await transaction.get(settingsDocRef);
-        if (settingsDoc.exists && settingsDoc.data() != null) {
-          final isDeliveryAllowed = settingsDoc.data()!['deliveryAvailable'] as bool? ?? true;
-          if (!isDeliveryAllowed) {
-            final msg = settingsDoc.data()!['deliveryUnavailableMessage'] as String? ??
-                'Delivery is currently unavailable. Please try again later.';
-            throw Exception(msg);
-          }
-        }
+      // Fetch active customer FCM token to store directly with order for guaranteed delivery
+      final customerFcmToken = await NotificationService.instance.getFCMToken();
 
-        DocumentSnapshot? addressDoc;
-        if (_selectedAddressId != null) {
-          final addressDocRef = db.collection('addresses').doc(_selectedAddressId);
-          addressDoc = await transaction.get(addressDocRef);
-        }
+      debugPrint('[ORDER_CREATE] ORDER_ID_GENERATED: ${orderRef.id}');
+      debugPrint('[ORDER_CREATE] ORDER_CREATE_STARTED orderId=${orderRef.id}');
 
-        final List<DocumentSnapshot> productSnapshots = [];
-        for (final item in cartProvider.items) {
-          final productRef = db.collection('products').doc(item.productId);
-          final productSnapshot = await transaction.get(productRef);
-          productSnapshots.add(productSnapshot);
-        }
+      // ─── Bounded retry with exponential backoff ──────────────────────────────
+      // IMPORTANT: orderRef is generated ONCE before this loop. Every retry
+      // writes to the SAME document ID — this is the idempotency guarantee that
+      // prevents duplicate orders even if the first attempt partially fails.
+      // ────────────────────────────────────────────────────────────────────────
+      const int maxOrderAttempts = 3;
+      int orderAttempt = 0;
+      Object? lastOrderError;
 
-        if (_selectedAddressId != null && addressDoc != null) {
-          final addressDocRef = db.collection('addresses').doc(_selectedAddressId);
-          final addressData = addressDoc.data() as Map<String, dynamic>? ?? {};
-          final updated = AddressModel(
-            id: addressDoc.id,
-            userId: user.uid,
-            label: (addressData['label'] as String?) ?? 'Home',
-            fullAddress: _addressController.text.trim(),
-            landmark: _landmarkController.text.trim(),
-            city: (addressData['city'] as String?) ?? AppConstants.city,
-            state: (addressData['state'] as String?) ?? AppConstants.state,
-            pincode: _pincodeController.text.trim(),
-            phone: _phoneController.text.trim(),
-            isDefault: true,
-          );
-          transaction.set(addressDocRef, updated.toMap());
-          deliveryAddressId = addressDoc.id;
-        } else {
-          final addressRef = db.collection('addresses').doc();
-          final address = AddressModel(
-            id: addressRef.id,
-            userId: user.uid,
-            label: 'Home',
-            fullAddress: _addressController.text.trim(),
-            landmark: _landmarkController.text.trim(),
-            city: AppConstants.city,
-            state: AppConstants.state,
-            pincode: _pincodeController.text.trim(),
-            phone: _phoneController.text.trim(),
-            isDefault: true,
-          );
-          transaction.set(addressRef, address.toMap());
-          deliveryAddressId = addressRef.id;
-        }
+      while (orderAttempt < maxOrderAttempts) {
+        orderAttempt++;
+        // Reset per-attempt accumulators so they don't double-count on retry
+        totalProductsSold = 0;
+        totalDiscountAmount = 0.0;
+        debugPrint('[ORDER_CREATE] FIRESTORE_WRITE_ATTEMPT_$orderAttempt orderId=${orderRef.id}');
 
-        final order = OrderModel(
-          id: orderRef.id,
-          orderNumber: orderNumber,
-          customerId: user.uid,
-          deliveryAddressId: deliveryAddressId,
-          subtotal: subtotal,
-          deliveryFee: deliveryFee,
-          totalPrice: total,
-          paymentMethod: _paymentMethod,
-          paymentStatus: _paymentMethod == PaymentMethods.cod ? PaymentStatuses.pending : PaymentStatuses.paid,
-          status: OrderStatuses.pending,
-          statusIndex: OrderStatuses.index(OrderStatuses.pending),
-          eta: now.add(const Duration(minutes: 30)),
-          notes: notes,
-          verificationCode: Helpers.generateVerificationCode(),
-        );
+        try {
+          await db.runTransaction((transaction) async {
+            // 2. Race condition protection: In-transaction atomic verification of delivery availability
+            final settingsDocRef = db.collection('shop_settings').doc('config');
+            final settingsDoc = await transaction.get(settingsDocRef);
+            if (settingsDoc.exists && settingsDoc.data() != null) {
+              final isDeliveryAllowed = settingsDoc.data()!['deliveryAvailable'] as bool? ?? true;
+              if (!isDeliveryAllowed) {
+                final msg = settingsDoc.data()!['deliveryUnavailableMessage'] as String? ??
+                    'Delivery is currently unavailable. Please try again later.';
+                throw Exception(msg);
+              }
+            }
 
-        transaction.set(orderRef, order.toMap());
+            DocumentSnapshot? addressDoc;
+            if (_selectedAddressId != null) {
+              final addressDocRef = db.collection('addresses').doc(_selectedAddressId);
+              addressDoc = await transaction.get(addressDocRef);
+            }
 
-        for (int i = 0; i < cartProvider.items.length; i++) {
-          final item = cartProvider.items.elementAt(i);
-          final productSnapshot = productSnapshots[i];
-          final productData = productSnapshot.data() as Map<String, dynamic>? ?? {};
-          
-          final bool variantsEnabled = productData['variantsEnabled'] as bool? ?? false;
-          final productRef = db.collection('products').doc(item.productId);
-          
-          double purchasePrice = 0.0;
-          double mrpVal = 0.0;
+            final List<DocumentSnapshot> productSnapshots = [];
+            for (final item in cartProvider.items) {
+              final productRef = db.collection('products').doc(item.productId);
+              final productSnapshot = await transaction.get(productRef);
+              productSnapshots.add(productSnapshot);
+            }
 
-          if (variantsEnabled && item.variantId.isNotEmpty) {
-            final List<dynamic> rawVariants = productData['variants'] as List<dynamic>? ?? [];
-            final List<Map<String, dynamic>> variantsList = List<Map<String, dynamic>>.from(
-              rawVariants.map((v) => Map<String, dynamic>.from(v as Map))
+            if (_selectedAddressId != null && addressDoc != null) {
+              final addressDocRef = db.collection('addresses').doc(_selectedAddressId);
+              final addressData = addressDoc.data() as Map<String, dynamic>? ?? {};
+              final updated = AddressModel(
+                id: addressDoc.id,
+                userId: user.uid,
+                label: (addressData['label'] as String?) ?? 'Home',
+                fullAddress: _addressController.text.trim(),
+                landmark: _landmarkController.text.trim(),
+                city: (addressData['city'] as String?) ?? AppConstants.city,
+                state: (addressData['state'] as String?) ?? AppConstants.state,
+                pincode: _pincodeController.text.trim(),
+                phone: _phoneController.text.trim(),
+                isDefault: true,
+              );
+              transaction.set(addressDocRef, updated.toMap());
+              deliveryAddressId = addressDoc.id;
+            } else {
+              final addressRef = db.collection('addresses').doc();
+              final address = AddressModel(
+                id: addressRef.id,
+                userId: user.uid,
+                label: 'Home',
+                fullAddress: _addressController.text.trim(),
+                landmark: _landmarkController.text.trim(),
+                city: AppConstants.city,
+                state: AppConstants.state,
+                pincode: _pincodeController.text.trim(),
+                phone: _phoneController.text.trim(),
+                isDefault: true,
+              );
+              transaction.set(addressRef, address.toMap());
+              deliveryAddressId = addressRef.id;
+            }
+
+            final order = OrderModel(
+              id: orderRef.id,
+              orderNumber: orderNumber,
+              customerId: user.uid,
+              deliveryAddressId: deliveryAddressId,
+              subtotal: subtotal,
+              deliveryFee: deliveryFee,
+              totalPrice: total,
+              paymentMethod: _paymentMethod,
+              paymentStatus: _paymentMethod == PaymentMethods.cod ? PaymentStatuses.pending : PaymentStatuses.paid,
+              status: OrderStatuses.pending,
+              statusIndex: OrderStatuses.index(OrderStatuses.pending),
+              eta: now.add(const Duration(minutes: 30)),
+              notes: notes,
+              verificationCode: Helpers.generateVerificationCode(),
+              customerFcmToken: customerFcmToken,
             );
-            
-            final int variantIndex = variantsList.indexWhere((v) => v['id'] == item.variantId);
-            if (variantIndex == -1) {
-              throw Exception('${productData['name'] ?? 'Product'} variant not found');
+
+            transaction.set(orderRef, order.toMap());
+
+            for (int i = 0; i < cartProvider.items.length; i++) {
+              final item = cartProvider.items.elementAt(i);
+              final productSnapshot = productSnapshots[i];
+              final productData = productSnapshot.data() as Map<String, dynamic>? ?? {};
+              
+              final bool variantsEnabled = productData['variantsEnabled'] as bool? ?? false;
+              final productRef = db.collection('products').doc(item.productId);
+              
+              double purchasePrice = 0.0;
+              double mrpVal = 0.0;
+
+              if (variantsEnabled && item.variantId.isNotEmpty) {
+                final List<dynamic> rawVariants = productData['variants'] as List<dynamic>? ?? [];
+                final List<Map<String, dynamic>> variantsList = List<Map<String, dynamic>>.from(
+                  rawVariants.map((v) => Map<String, dynamic>.from(v as Map))
+                );
+                
+                final int variantIndex = variantsList.indexWhere((v) => v['id'] == item.variantId);
+                if (variantIndex == -1) {
+                  throw Exception('${productData['name'] ?? 'Product'} variant not found');
+                }
+                
+                final variant = variantsList[variantIndex];
+                final int currentStock = variant['stockQuantity'] as int? ?? 0;
+                purchasePrice = (variant['purchasePrice'] as num?)?.toDouble() ?? 0.0;
+                mrpVal = (variant['mrp'] as num?)?.toDouble() ?? (variant['price'] as num?)?.toDouble() ?? 0.0;
+                
+                if (currentStock < item.quantity) {
+                  throw Exception('${productData['name'] ?? 'Product'} (${variant['name']}) is out of stock');
+                }
+                
+                variant['stockQuantity'] = currentStock - item.quantity;
+                if (variant['stockQuantity'] <= 0) {
+                  variant['status'] = 'Out of Stock';
+                }
+                
+                transaction.update(productRef, {'variants': variantsList});
+              } else {
+                final int stock = productData['stockQuantity'] as int? ?? 0;
+                purchasePrice = (productData['purchasePrice'] as num?)?.toDouble() ?? 0.0;
+                mrpVal = (productData['mrp'] as num?)?.toDouble() ?? (productData['price'] as num?)?.toDouble() ?? 0.0;
+
+                if (stock < item.quantity) {
+                  throw Exception('${productData['name'] ?? 'Product'} is out of stock');
+                }
+
+                transaction.update(productRef, {
+                  'stockQuantity': FieldValue.increment(-item.quantity),
+                });
+              }
+
+              final itemDiscount = (mrpVal > item.unitPrice) ? (mrpVal - item.unitPrice) : 0.0;
+              totalDiscountAmount += itemDiscount * item.quantity;
+              totalProductsSold += item.quantity;
+
+              final String orderItemDocId = item.variantId.isNotEmpty ? '${item.productId}_${item.variantId}' : item.productId;
+
+              transaction.set(
+                orderRef.collection('order_items').doc(orderItemDocId),
+                OrderItemModel(
+                  id: orderItemDocId,
+                  orderId: orderRef.id,
+                  productId: item.productId,
+                  productName: productData['name'] as String? ?? 'Product',
+                  unitPrice: item.unitPrice,
+                  quantity: item.quantity,
+                  variantId: item.variantId,
+                  variantName: item.variantName,
+                  selectedWeight: item.selectedWeight,
+                  purchasePrice: purchasePrice,
+                ).toMap(),
+              );
             }
-            
-            final variant = variantsList[variantIndex];
-            final int currentStock = variant['stockQuantity'] as int? ?? 0;
-            purchasePrice = (variant['purchasePrice'] as num?)?.toDouble() ?? 0.0;
-            mrpVal = (variant['mrp'] as num?)?.toDouble() ?? (variant['price'] as num?)?.toDouble() ?? 0.0;
-            
-            if (currentStock < item.quantity) {
-              throw Exception('${productData['name'] ?? 'Product'} (${variant['name']}) is out of stock');
+
+            for (final item in cartProvider.items) {
+              transaction.delete(db.collection('cart_items').doc(item.id));
             }
-            
-            variant['stockQuantity'] = currentStock - item.quantity;
-            if (variant['stockQuantity'] <= 0) {
-              variant['status'] = 'Out of Stock';
-            }
-            
-            transaction.update(productRef, {'variants': variantsList});
+          });
+
+          debugPrint('[ORDER_CREATE] FIRESTORE_WRITE_SUCCESS orderId=${orderRef.id}');
+          lastOrderError = null;
+          break; // ✅ Transaction committed — exit retry loop
+
+        } on FirebaseException catch (fe) {
+          lastOrderError = fe;
+          if ((fe.code == 'unavailable' || fe.code == 'deadline-exceeded') &&
+              orderAttempt < maxOrderAttempts) {
+            // Transient error — wait with exponential backoff + random jitter
+            final jitterMs = Random().nextInt(400);
+            final delayMs = (1000 * (1 << (orderAttempt - 1))) + jitterMs;
+            debugPrint(
+              '[ORDER_CREATE] FIRESTORE_RETRY attempt=$orderAttempt '
+              'delay=${delayMs}ms code=${fe.code}',
+            );
+            await Future.delayed(Duration(milliseconds: delayMs));
           } else {
-            final int stock = productData['stockQuantity'] as int? ?? 0;
-            purchasePrice = (productData['purchasePrice'] as num?)?.toDouble() ?? 0.0;
-            mrpVal = (productData['mrp'] as num?)?.toDouble() ?? (productData['price'] as num?)?.toDouble() ?? 0.0;
-
-            if (stock < item.quantity) {
-              throw Exception('${productData['name'] ?? 'Product'} is out of stock');
-            }
-
-            transaction.update(productRef, {
-              'stockQuantity': FieldValue.increment(-item.quantity),
-            });
+            break; // Non-retryable Firebase error or max attempts reached
           }
-
-          final itemDiscount = (mrpVal > item.unitPrice) ? (mrpVal - item.unitPrice) : 0.0;
-          totalDiscountAmount += itemDiscount * item.quantity;
-          totalProductsSold += item.quantity;
-
-          final String orderItemDocId = item.variantId.isNotEmpty ? '${item.productId}_${item.variantId}' : item.productId;
-
-          transaction.set(
-            orderRef.collection('order_items').doc(orderItemDocId),
-            OrderItemModel(
-              id: orderItemDocId,
-              orderId: orderRef.id,
-              productId: item.productId,
-              productName: productData['name'] as String? ?? 'Product',
-              unitPrice: item.unitPrice,
-              quantity: item.quantity,
-              variantId: item.variantId,
-              variantName: item.variantName,
-              selectedWeight: item.selectedWeight,
-              purchasePrice: purchasePrice,
-            ).toMap(),
-          );
+        } catch (appErr) {
+          lastOrderError = appErr;
+          break; // App-logic errors (stock unavailable, delivery closed) are not retried
         }
+      }
 
-        for (final item in cartProvider.items) {
-          transaction.delete(db.collection('cart_items').doc(item.id));
-        }
-      });
+      // If every attempt failed, re-throw so the outer catch shows a friendly message.
+      // The cart is NOT cleared and the success overlay is NOT shown.
+      if (lastOrderError != null) {
+        debugPrint('[ORDER_CREATE] FIRESTORE_FAILURE orderId=${orderRef.id} error=$lastOrderError');
+        throw lastOrderError;
+      }
+
+      debugPrint('[ORDER_CREATE] ORDER_CREATE_COMPLETED orderId=${orderRef.id}');
 
       // Record banner conversion if there was an attributed banner click
       if (cartProvider.bannerIdClicked != null) {
@@ -658,7 +760,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''))));
+      final String msg = _friendlyOrderError(e);
+      final bool canRetry = _isTransientFirestoreError(e);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(msg),
+        backgroundColor: AppColors.error,
+        duration: const Duration(seconds: 5),
+        action: canRetry
+            ? SnackBarAction(
+                label: 'Retry',
+                textColor: Colors.white,
+                onPressed: _placeOrder,
+              )
+            : null,
+      ));
     } finally {
       if (mounted) setState(() => _loading = false);
     }

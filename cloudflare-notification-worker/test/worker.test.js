@@ -35,12 +35,16 @@ test('Notification content generator produces required customer copy', () => {
   assert.equal(pac.body, 'Your Tiruttani Quick order #TQ1001 has been packed and is ready.');
 
   const out = getNotificationContent(NOTIFICATION_STATUSES.OUT_FOR_DELIVERY, 'ord123', 'TQ1001');
-  assert.equal(out.title, 'Out for Delivery');
+  assert.equal(out.title, 'Out for Delivery 🚚');
   assert.equal(out.body, 'Your Tiruttani Quick order #TQ1001 is on the way.');
 
   const outWithOtp = getNotificationContent(NOTIFICATION_STATUSES.OUT_FOR_DELIVERY, 'ord123', 'TQ1001', '584920');
-  assert.equal(outWithOtp.title, 'Out for Delivery');
+  assert.equal(outWithOtp.title, 'Out for Delivery 🚚');
   assert.equal(outWithOtp.body, 'Your Tiruttani Quick order #TQ1001 is on the way. Delivery OTP: 584920');
+
+  const outWithPartner = getNotificationContent(NOTIFICATION_STATUSES.OUT_FOR_DELIVERY, 'ord123', 'TQ1001', '584920', 'Ravi');
+  assert.equal(outWithPartner.title, 'Out for Delivery 🚚');
+  assert.equal(outWithPartner.body, 'Ravi is delivering your order. Delivery OTP: 584920');
 
   const del = getNotificationContent(NOTIFICATION_STATUSES.DELIVERED, 'ord123', 'TQ1001');
   assert.equal(del.title, 'Order Delivered');
@@ -61,15 +65,15 @@ test('FCM HTTP v1 message builder generates valid Android High Priority structur
   });
 
   assert.equal(msg.message.token, 'fcm_test_token_12345');
-  assert.equal(msg.message.notification.title, 'Out for Delivery');
+  assert.equal(msg.message.notification.title, 'Out for Delivery 🚚');
   assert.equal(msg.message.notification.body, 'Your Tiruttani Quick order #TQ999 is on the way. Delivery OTP: 849201');
   assert.equal(msg.message.data.type, 'order_status');
   assert.equal(msg.message.data.orderId, 'order_abc_999');
   assert.equal(msg.message.data.status, 'out_for_delivery');
   assert.equal(msg.message.data.deliveryOtp, '849201');
   assert.equal(msg.message.data.screen, 'order_tracking');
-  assert.equal(msg.message.android.priority, 'high');
-  assert.equal(msg.message.android.notification.channel_id, 'orders_channel');
+  assert.equal(msg.message.android.priority, 'HIGH');
+  assert.equal(msg.message.android.notification.channel_id, 'tq_order_status_v4');
   assert.equal(msg.message.android.notification.click_action, 'FLUTTER_NOTIFICATION_CLICK');
 });
 
@@ -134,7 +138,7 @@ test('All 5 production order transitions construct valid payload titles and bodi
   const statuses = [
     { key: NOTIFICATION_STATUSES.ACCEPTED, title: 'Order Accepted', bodyContains: 'has been accepted' },
     { key: NOTIFICATION_STATUSES.PACKED, title: 'Order Packed', bodyContains: 'has been packed' },
-    { key: NOTIFICATION_STATUSES.OUT_FOR_DELIVERY, title: 'Out for Delivery', bodyContains: 'is on the way' },
+    { key: NOTIFICATION_STATUSES.OUT_FOR_DELIVERY, title: 'Out for Delivery 🚚', bodyContains: 'is on the way' },
     { key: NOTIFICATION_STATUSES.DELIVERED, title: 'Order Delivered', bodyContains: 'has been delivered' },
     { key: NOTIFICATION_STATUSES.CANCELLED, title: 'Order Cancelled', bodyContains: 'has been cancelled' },
   ];
@@ -175,9 +179,9 @@ test('Admin New Order FCM message builder generates high priority payload with c
   assert.equal(msg.message.data.customerId, 'CUST_123');
   assert.equal(msg.message.data.status, 'pending');
   assert.equal(msg.message.data.screen, 'admin_dashboard');
-  assert.equal(msg.message.android.priority, 'high');
-  assert.equal(msg.message.android.notification.channel_id, 'admin_new_orders_v2');
-  assert.equal(msg.message.android.notification.sound, 'new_order_alert');
+  assert.equal(msg.message.android.priority, 'HIGH');
+  assert.equal(msg.message.android.notification.channel_id, 'tq_new_orders_v4');
+  assert.equal(msg.message.android.notification.sound, 'order_received');
   assert.equal(msg.message.android.notification.default_sound, false);
 });
 

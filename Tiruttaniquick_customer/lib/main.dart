@@ -6,6 +6,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:provider/provider.dart';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
+
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/cart/presentation/cart_provider.dart';
@@ -14,6 +16,24 @@ import 'services/current_user_provider.dart';
 import 'services/service_area_provider.dart';
 import 'services/settings_provider.dart';
 import 'services/startup_provider.dart';
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+    final truncatedId = message.messageId != null && message.messageId!.length > 8
+        ? message.messageId!.substring(message.messageId!.length - 8)
+        : message.messageId;
+    debugPrint('[Customer Background Messaging] FCM background message received: $truncatedId');
+  } catch (e) {
+    debugPrint('[Customer Background Messaging Error] $e');
+  }
+}
 
 Future<void> main() async {
   final appStartupStopwatch = AuthPerformanceLogger.start('App Startup');
@@ -83,8 +103,29 @@ Future<void> main() async {
       ),
     );
     debugPrint('[Startup Log] Step 2 Complete: Firebase App Core initialized.');
+
+    // Apply Firestore offline-persistence settings exactly once, immediately
+    // after Firebase core is ready and before any other service (Messaging,
+    // NotificationService, etc.) triggers a Firestore read/write.
+    FirestoreService.configure();
+    debugPrint('[Startup Log] Firestore persistence settings configured.');
+
+    // Step 4: Register background message handler
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+    // Step 5: Initialize NotificationService for foreground handling & channel setup
+    await NotificationService.instance.initialize(
+      onNotificationTap: (payload) {
+        debugPrint('[Customer Main] Notification Tapped: $payload');
+        final orderId = payload['orderId']?.toString() ?? '';
+        if (orderId.isNotEmpty) {
+          router.push('${AppRoutes.myOrders}/$orderId');
+        }
+      },
+    );
+    debugPrint('[Startup Log] Step 3 Complete: NotificationService initialized.');
   } catch (e, stack) {
-    debugPrint('[Startup Log] CRITICAL ERROR initializing Firebase: $e\n$stack');
+    debugPrint('[Startup Log] CRITICAL ERROR initializing Firebase/Notifications: $e\n$stack');
     initError = 'Failed to initialize core services: $e';
   }
 

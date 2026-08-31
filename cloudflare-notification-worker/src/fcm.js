@@ -118,6 +118,11 @@ export async function getGoogleOAuth2AccessToken({ clientEmail, privateKey }) {
   return cachedAccessToken;
 }
 
+function safeToken(token) {
+  if (!token || typeof token !== 'string') return '';
+  return token.length > 8 ? `...${token.substring(token.length - 8)}` : token;
+}
+
 /**
  * Dispatches an FCM HTTP v1 push notification to one or multiple device registration tokens.
  *
@@ -140,6 +145,7 @@ export async function sendFcmNotification({
   orderId,
   orderNumber,
   deliveryOtp,
+  deliveryPersonName,
 }) {
   if (!tokens || tokens.length === 0) {
     return { delivered: 0, failed: 0, invalidTokens: [], results: [] };
@@ -168,6 +174,7 @@ export async function sendFcmNotification({
         orderId,
         orderNumber,
         deliveryOtp,
+        deliveryPersonName,
       });
 
       try {
@@ -182,11 +189,14 @@ export async function sendFcmNotification({
 
         if (res.ok) {
           delivered++;
-          results.push({ token, success: true });
+          console.log(`[FCM Dispatch] type: "order_status", orderId: "${orderId}", role: "customer", targetTokens: ${uniqueTokens.length}, token: "${safeToken(token)}", status: ${res.status}, errorCode: "NONE"`);
+          results.push({ token: safeToken(token), success: true });
         } else {
           failed++;
           const errData = await res.json().catch(() => ({}));
-          const errorCode = errData?.error?.details?.[0]?.errorCode || errData?.error?.status;
+          const errorCode = errData?.error?.details?.[0]?.errorCode || errData?.error?.status || 'UNKNOWN_ERROR';
+
+          console.warn(`[FCM Dispatch Error] type: "order_status", orderId: "${orderId}", role: "customer", targetTokens: ${uniqueTokens.length}, token: "${safeToken(token)}", status: ${res.status}, errorCode: "${errorCode}"`);
 
           // Check if token is invalid or unregistered
           if (
@@ -198,16 +208,18 @@ export async function sendFcmNotification({
           }
 
           results.push({
-            token,
+            token: safeToken(token),
             success: false,
             status: res.status,
             error: errData?.error?.message || `HTTP ${res.status}`,
+            errorCode,
           });
         }
       } catch (err) {
         failed++;
+        console.error(`[FCM Network Error] type: "order_status", orderId: "${orderId}", token: "${safeToken(token)}", error: "${err.message}"`);
         results.push({
-          token,
+          token: safeToken(token),
           success: false,
           error: err.message,
         });
@@ -277,11 +289,14 @@ export async function sendAdminNewOrderNotification({
 
         if (res.ok) {
           delivered++;
-          results.push({ token, success: true });
+          console.log(`[FCM Dispatch] type: "new_order", orderId: "${orderId}", role: "admin", targetTokens: ${uniqueTokens.length}, token: "${safeToken(token)}", status: ${res.status}, errorCode: "NONE"`);
+          results.push({ token: safeToken(token), success: true });
         } else {
           failed++;
           const errData = await res.json().catch(() => ({}));
-          const errorCode = errData?.error?.details?.[0]?.errorCode || errData?.error?.status;
+          const errorCode = errData?.error?.details?.[0]?.errorCode || errData?.error?.status || 'UNKNOWN_ERROR';
+
+          console.warn(`[FCM Dispatch Error] type: "new_order", orderId: "${orderId}", role: "admin", targetTokens: ${uniqueTokens.length}, token: "${safeToken(token)}", status: ${res.status}, errorCode: "${errorCode}"`);
 
           if (
             errorCode === 'UNREGISTERED' ||
@@ -292,16 +307,18 @@ export async function sendAdminNewOrderNotification({
           }
 
           results.push({
-            token,
+            token: safeToken(token),
             success: false,
             status: res.status,
             error: errData?.error?.message || `HTTP ${res.status}`,
+            errorCode,
           });
         }
       } catch (err) {
         failed++;
+        console.error(`[FCM Network Error] type: "new_order", orderId: "${orderId}", token: "${safeToken(token)}", error: "${err.message}"`);
         results.push({
-          token,
+          token: safeToken(token),
           success: false,
           error: err.message,
         });

@@ -29,36 +29,47 @@ class NotificationSenderService {
   /// 4. Handles invalid/expired tokens by pruning them from Firestore.
   ///
   /// Returns `true` if dispatch succeeded or if skipped gracefully. Never throws.
+  /// Sends an order status push notification to the customer associated with [customerId].
   Future<bool> sendOrderStatusNotification({
     required String orderId,
     required String status,
     required String customerId,
     String? orderNumber,
     String? deliveryOtp,
+    String? deliveryPersonName,
+    String? directToken,
   }) async {
+    debugPrint('[FCM DIAGNOSTICS] sendOrderStatusNotification called: orderId=$orderId, status=$status, customerId=$customerId');
     if (orderId.isEmpty || status.isEmpty || customerId.isEmpty) {
-      debugPrint('[NotificationSenderService] Missing required parameters; skipping push.');
+      debugPrint('[FCM DIAGNOSTICS] Missing required parameters (orderId/status/customerId); skipping push.');
       return false;
     }
 
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
-        debugPrint('[NotificationSenderService] No authenticated admin user; skipping push.');
+        debugPrint('[FCM DIAGNOSTICS] No authenticated admin user found in FirebaseAuth; skipping push.');
         return false;
       }
 
-      // 1. Fetch customer's active FCM device tokens from Firestore
-      final tokens = await _getCustomerFcmTokens(customerId);
+      // 1. Fetch customer's active FCM device tokens with multiple fallback layers
+      final tokens = await _getCustomerFcmTokens(
+        customerId,
+        orderId: orderId,
+        directToken: directToken,
+      );
       if (tokens.isEmpty) {
-        debugPrint('[NotificationSenderService] No FCM device tokens found for customer: $customerId');
+        debugPrint('[FCM DIAGNOSTICS] No registered FCM device tokens found in Firestore for customer: $customerId');
         return true;
       }
+
+      final truncatedList = tokens.map((t) => t.length > 8 ? '...${t.substring(t.length - 8)}' : t).toList();
+      debugPrint('[FCM DIAGNOSTICS] Retrieved ${tokens.length} token(s) for customer $customerId: $truncatedList');
 
       // 2. Get Admin's Firebase Auth ID Token for Bearer authentication
       final idToken = await user.getIdToken();
       if (idToken == null || idToken.isEmpty) {
-        debugPrint('[NotificationSenderService] Failed to obtain Firebase ID token for admin.');
+        debugPrint('[FCM DIAGNOSTICS] Failed to obtain Firebase ID token for admin.');
         return false;
       }
 
@@ -71,6 +82,88 @@ class NotificationSenderService {
         'status': status,
         'tokens': tokens,
         if (deliveryOtp != null && deliveryOtp.isNotEmpty) 'deliveryOtp': deliveryOtp,
+        if (deliveryPersonName != null && deliveryPersonName.isNotEmpty) 'deliveryPersonName': deliveryPersonName,
+      };
+
+      debugPrint('[FCM DIAGNOSTICS] Dispatching request to Cloudflare Worker: $uri');
+      final response = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $idToken',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        // Parse the Worker response to confirm actual FCM delivery
+        try {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final delivered = (data['delivered'] as num?)?.toInt() ?? -1;
+          final failed = (data['failed'] as num?)?.toInt() ?? 0;
+          final invalidTokens = (data['invalidTokens'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+
+          if (invalidTokens.isNotEmpty) {
+            await _pruneInvalidTokens(customerId, invalidTokens);
+          }
+
+          if (delivered == 0 && failed > 0) {
+            // Worker reached FCM but every token was rejected (invalid/expired)
+            debugPrint('[FCM DIAGNOSTICS] Worker returned delivered:0 failed:$failed for order $orderId — all tokens invalid or FCM rejected');
+            return false;
+          }
+
+          if (delivered == 0 && failed == 0 && data.containsKey('delivered')) {
+            // No tokens were provided (skipped by worker) — not a push failure, just nothing to send
+            debugPrint('[FCM DIAGNOSTICS] Worker skipped dispatch (no tokens) for order $orderId');
+            return true;
+          }
+
+          debugPrint('[FCM DIAGNOSTICS] Worker SUCCESS: delivered=$delivered failed=$failed for order $orderId ($status)');
+          return true;
+        } catch (_) {
+          // If we can\'t parse the body, treat HTTP 2xx as success
+          debugPrint('[FCM DIAGNOSTICS] Worker 2xx but could not parse body for order $orderId; treating as success');
+          return true;
+        }
+      } else {
+        debugPrint('[FCM DIAGNOSTICS] Cloudflare Worker returned HTTP ${response.statusCode}: ${response.body}');
+        return false;
+      }
+    } catch (e, st) {
+      debugPrint('[FCM DIAGNOSTICS] Failed to send push notification: $e\n$st');
+      return false;
+    }
+  }
+
+  /// Sends a direct test notification to a specific test token for diagnostic verification.
+  Future<Map<String, dynamic>> testSendCustomerNotification({
+    required String testToken,
+    String? orderId,
+  }) async {
+    final truncated = testToken.length > 8 ? '...${testToken.substring(testToken.length - 8)}' : testToken;
+    debugPrint('[FCM DIAGNOSTICS] testSendCustomerNotification called with token: $truncated');
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        return {'success': false, 'error': 'No authenticated admin user'};
+      }
+
+      final idToken = await user.getIdToken();
+      if (idToken == null || idToken.isEmpty) {
+        return {'success': false, 'error': 'Failed to get ID token'};
+      }
+
+      final uri = Uri.parse('$workerEndpoint/send-order-notification');
+      final payload = {
+        'orderId': orderId ?? 'TEST-ORDER-123',
+        'orderNumber': 'TEST-123',
+        'customerId': user.uid,
+        'status': 'test',
+        'tokens': [testToken],
       };
 
       final response = await http
@@ -84,46 +177,74 @@ class NotificationSenderService {
           )
           .timeout(const Duration(seconds: 10));
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        debugPrint('[NotificationSenderService] Push notification sent successfully for order $orderId ($status)');
-        
-        // Check for any invalid tokens returned to clean up
-        try {
-          final data = jsonDecode(response.body) as Map<String, dynamic>;
-          final invalidTokens = (data['invalidTokens'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
-          if (invalidTokens.isNotEmpty) {
-            await _pruneInvalidTokens(customerId, invalidTokens);
-          }
-        } catch (_) {}
+      final Map<String, dynamic> body = response.body.isNotEmpty
+          ? jsonDecode(response.body) as Map<String, dynamic>
+          : {};
 
-        return true;
-      } else {
-        debugPrint('[NotificationSenderService] Worker returned HTTP ${response.statusCode}: ${response.body}');
-        return false;
-      }
-    } catch (e, st) {
-      debugPrint('[NotificationSenderService] Failed to send push notification: $e\n$st');
-      return false;
+      return {
+        'statusCode': response.statusCode,
+        'success': response.statusCode >= 200 && response.statusCode < 300,
+        'body': body,
+      };
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
     }
   }
 
-  /// Queries all registered FCM tokens for the given customer ID.
-  Future<List<String>> _getCustomerFcmTokens(String customerId) async {
+  /// Queries all registered FCM tokens for the given customer ID with multi-layer fallback.
+  Future<List<String>> _getCustomerFcmTokens(
+    String customerId, {
+    String? orderId,
+    String? directToken,
+  }) async {
     final tokenSet = <String>{};
 
+    // 0. Direct token if supplied
+    if (directToken != null && directToken.trim().isNotEmpty) {
+      tokenSet.add(directToken.trim());
+    }
+
     try {
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(customerId).get();
+      // 1. Check order document for direct customerFcmToken stored at checkout
+      if (orderId != null && orderId.isNotEmpty) {
+        try {
+          final orderDoc = await FirebaseFirestore.instance.collection('orders').doc(orderId).get();
+          if (orderDoc.exists) {
+            final orderData = orderDoc.data();
+            final orderToken = orderData?['customerFcmToken'] as String?;
+            if (orderToken != null && orderToken.trim().isNotEmpty) {
+              tokenSet.add(orderToken.trim());
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 2. Query customer user document
+      final cleanId = customerId.trim();
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(cleanId).get();
       if (userDoc.exists) {
-        final primaryToken = userDoc.data()?['fcmToken'] as String?;
-        if (primaryToken != null && primaryToken.trim().isNotEmpty) {
-          tokenSet.add(primaryToken.trim());
+        final data = userDoc.data();
+        if (data != null) {
+          final primaryToken = data['fcmToken'] as String?;
+          if (primaryToken != null && primaryToken.trim().isNotEmpty) {
+            tokenSet.add(primaryToken.trim());
+          }
+
+          final arrayTokens = data['fcmTokens'];
+          if (arrayTokens is List) {
+            for (final t in arrayTokens) {
+              if (t != null && t.toString().trim().isNotEmpty) {
+                tokenSet.add(t.toString().trim());
+              }
+            }
+          }
         }
       }
 
-      // Also query multi-device subcollection
+      // 3. Also query multi-device subcollection
       final subSnap = await FirebaseFirestore.instance
           .collection('users')
-          .doc(customerId)
+          .doc(cleanId)
           .collection('fcmTokens')
           .limit(10)
           .get();
@@ -132,6 +253,30 @@ class NotificationSenderService {
         final token = doc.data()['token'] as String? ?? doc.id;
         if (token.trim().isNotEmpty) {
           tokenSet.add(token.trim());
+        }
+      }
+
+      // 4. Fallback search by uid field if docId query was empty
+      if (tokenSet.isEmpty) {
+        final querySnap = await FirebaseFirestore.instance
+            .collection('users')
+            .where('uid', isEqualTo: cleanId)
+            .limit(1)
+            .get();
+        for (final doc in querySnap.docs) {
+          final data = doc.data();
+          final primaryToken = data['fcmToken'] as String?;
+          if (primaryToken != null && primaryToken.trim().isNotEmpty) {
+            tokenSet.add(primaryToken.trim());
+          }
+          final arrayTokens = data['fcmTokens'];
+          if (arrayTokens is List) {
+            for (final t in arrayTokens) {
+              if (t != null && t.toString().trim().isNotEmpty) {
+                tokenSet.add(t.toString().trim());
+              }
+            }
+          }
         }
       }
     } catch (e) {
@@ -143,18 +288,29 @@ class NotificationSenderService {
 
   /// Prunes invalid/unregistered tokens from the customer's Firestore profile.
   Future<void> _pruneInvalidTokens(String customerId, List<String> invalidTokens) async {
-    final batch = FirebaseFirestore.instance.batch();
-    for (final token in invalidTokens) {
-      final subDoc = FirebaseFirestore.instance
-          .collection('users')
-          .doc(customerId)
-          .collection('fcmTokens')
-          .doc(token);
-      batch.delete(subDoc);
-    }
-    await batch.commit().catchError((e) {
+    if (invalidTokens.isEmpty) return;
+
+    try {
+      // 1. Remove from user document array
+      await FirebaseFirestore.instance.collection('users').doc(customerId).set({
+        'fcmTokens': FieldValue.arrayRemove(invalidTokens),
+      }, SetOptions(merge: true));
+
+      // 2. Remove from subcollection
+      final batch = FirebaseFirestore.instance.batch();
+      for (final token in invalidTokens) {
+        final subDoc = FirebaseFirestore.instance
+            .collection('users')
+            .doc(customerId)
+            .collection('fcmTokens')
+            .doc(token);
+        batch.delete(subDoc);
+      }
+      await batch.commit();
+      debugPrint('[NotificationSenderService] Successfully pruned ${invalidTokens.length} invalid tokens for $customerId');
+    } catch (e) {
       debugPrint('[NotificationSenderService] Error pruning invalid tokens: $e');
-    });
+    }
   }
 
   /// Dispatches a high-priority push notification to all Admin devices when a customer places a new order.

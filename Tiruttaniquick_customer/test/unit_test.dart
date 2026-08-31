@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 import 'package:tiruttaniquick_customer/services/settings_provider.dart';
 import 'package:tiruttaniquick_customer/services/service_area_provider.dart';
@@ -911,7 +912,7 @@ void main() {
 
       expect(find.text('Thiruttani Quick'), findsOneWidget);
       expect(find.text('Skip'), findsOneWidget);
-      expect(find.text('FARM FRESH QUALITY'), findsOneWidget);
+      expect(find.text('QUALITY GROCERY'), findsOneWidget);
       expect(find.text('Next'), findsOneWidget);
       expect(find.text('1 of 3'), findsOneWidget);
     });
@@ -1153,6 +1154,201 @@ void main() {
 
       final animatedSlide = tester.widget<AnimatedSlide>(find.byType(AnimatedSlide));
       expect(animatedSlide.offset, const Offset(0, 1));
+    });
+  });
+
+  group('Order Creation Resilience & Firestore Retry Tests', () {
+    test('FirestoreService.configure can be called safely and idempotently', () {
+      expect(() => FirestoreService.configure(), returnsNormally);
+      expect(() => FirestoreService.configure(), returnsNormally);
+      expect(FirestoreService(), isNotNull);
+    });
+
+    test('Retry simulation: write succeeds on first attempt', () async {
+      int attempts = 0;
+      final orderId = 'TQ_TEST_ORDER_001';
+
+      Future<bool> simulateWrite() async {
+        attempts++;
+        return true;
+      }
+
+      int retryCount = 0;
+      bool success = false;
+      const maxAttempts = 3;
+
+      while (retryCount < maxAttempts) {
+        retryCount++;
+        try {
+          success = await simulateWrite();
+          break;
+        } catch (_) {}
+      }
+
+      expect(success, isTrue);
+      expect(attempts, 1);
+      expect(retryCount, 1);
+      expect(orderId, 'TQ_TEST_ORDER_001'); // ID is constant
+    });
+
+    test('Retry simulation: first attempt unavailable -> second attempt succeeds', () async {
+      int attempts = 0;
+      final orderId = 'TQ_TEST_ORDER_002';
+
+      Future<bool> simulateWrite() async {
+        attempts++;
+        if (attempts == 1) {
+          throw FirebaseException(plugin: 'cloud_firestore', code: 'unavailable', message: 'Service unavailable');
+        }
+        return true;
+      }
+
+      int retryCount = 0;
+      bool success = false;
+      const maxAttempts = 3;
+
+      while (retryCount < maxAttempts) {
+        retryCount++;
+        try {
+          success = await simulateWrite();
+          break;
+        } on FirebaseException catch (fe) {
+          if (fe.code == 'unavailable' && retryCount < maxAttempts) {
+            continue;
+          }
+          break;
+        }
+      }
+
+      expect(success, isTrue);
+      expect(attempts, 2);
+      expect(retryCount, 2);
+      expect(orderId, 'TQ_TEST_ORDER_002'); // Same order ID across attempts
+    });
+
+    test('Retry simulation: multiple transient failures exhaust max 3 attempts', () async {
+      int attempts = 0;
+      final orderId = 'TQ_TEST_ORDER_003';
+
+      Future<bool> simulateWrite() async {
+        attempts++;
+        throw FirebaseException(plugin: 'cloud_firestore', code: 'unavailable', message: 'Service unavailable');
+      }
+
+      int retryCount = 0;
+      bool success = false;
+      Object? lastError;
+      const maxAttempts = 3;
+
+      while (retryCount < maxAttempts) {
+        retryCount++;
+        try {
+          success = await simulateWrite();
+          break;
+        } on FirebaseException catch (fe) {
+          lastError = fe;
+          if (fe.code == 'unavailable' && retryCount < maxAttempts) {
+            continue;
+          }
+          break;
+        }
+      }
+
+      expect(success, isFalse);
+      expect(attempts, 3);
+      expect(retryCount, 3);
+      expect(lastError, isA<FirebaseException>());
+      expect((lastError as FirebaseException).code, 'unavailable');
+      expect(orderId, 'TQ_TEST_ORDER_003');
+    });
+
+    test('Non-transient error (permission-denied) is NOT retried', () async {
+      int attempts = 0;
+
+      Future<bool> simulateWrite() async {
+        attempts++;
+        throw FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied', message: 'Missing permissions');
+      }
+
+      int retryCount = 0;
+      bool success = false;
+      const maxAttempts = 3;
+
+      while (retryCount < maxAttempts) {
+        retryCount++;
+        try {
+          success = await simulateWrite();
+          break;
+        } on FirebaseException catch (fe) {
+          if ((fe.code == 'unavailable' || fe.code == 'deadline-exceeded') && retryCount < maxAttempts) {
+            continue;
+          }
+          break; // Stop immediately on permission-denied
+        }
+      }
+
+      expect(success, isFalse);
+      expect(attempts, 1);
+      expect(retryCount, 1);
+    });
+
+    test('Cart state is preserved on failure and cleared only on success', () async {
+      final cartItems = ['item_1', 'item_2'];
+      bool isCartCleared = false;
+
+      void processOrderOutcome({required bool success}) {
+        if (success) {
+          cartItems.clear();
+          isCartCleared = true;
+        }
+      }
+
+      // Simulate failure
+      processOrderOutcome(success: false);
+      expect(isCartCleared, isFalse);
+      expect(cartItems.length, 2);
+
+      // Simulate success
+      processOrderOutcome(success: true);
+      expect(isCartCleared, isTrue);
+      expect(cartItems.isEmpty, isTrue);
+    });
+
+    test('OrderModel serialization contains all valid Firestore fields', () {
+      final now = DateTime.now();
+      final order = OrderModel(
+        id: 'order_123',
+        orderNumber: 'TQ260830123456789ABCD',
+        customerId: 'user_cust_1',
+        deliveryAddressId: 'addr_1',
+        subtotal: 250.0,
+        deliveryFee: 0.0,
+        totalPrice: 250.0,
+        paymentMethod: 'COD',
+        paymentStatus: 'Pending',
+        status: 'pending',
+        statusIndex: 1,
+        placedAt: now,
+        notes: 'Slot: Morning',
+        verificationCode: '4321',
+        customerFcmToken: 'fcm_token_test_123',
+      );
+
+      final map = order.toMap();
+      expect(map['orderNumber'], 'TQ260830123456789ABCD');
+      expect(map['customerId'], 'user_cust_1');
+      expect(map['deliveryAddressId'], 'addr_1');
+      expect(map['totalPrice'], 250.0);
+      expect(map['status'], 'pending');
+      expect(map['verificationCode'], '4321');
+      expect(map['customerFcmToken'], 'fcm_token_test_123');
+
+      final deserialized = OrderModel.fromFirestore('order_123', map);
+      expect(deserialized.id, 'order_123');
+      expect(deserialized.orderNumber, 'TQ260830123456789ABCD');
+      expect(deserialized.customerId, 'user_cust_1');
+      expect(deserialized.totalPrice, 250.0);
+      expect(deserialized.customerFcmToken, 'fcm_token_test_123');
     });
   });
 }

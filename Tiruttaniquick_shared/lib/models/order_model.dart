@@ -24,11 +24,17 @@ class OrderModel {
   final String? deliveryOtp;
   final DateTime? deliveryOtpCreatedAt;
 
+  // Delivery Person Fields
+  final String? deliveryPersonName;
+  final String? deliveryPersonPhone;
+
   // Cancellation and Refund Fields
   final String? cancellationReason;
   final String? cancelledBy;
   final DateTime? cancelledAt;
   final String? refundStatus;
+  // Push Notification token
+  final String? customerFcmToken;
 
   const OrderModel({
     required this.id,
@@ -52,10 +58,13 @@ class OrderModel {
     required this.verificationCode,
     this.deliveryOtp,
     this.deliveryOtpCreatedAt,
+    this.deliveryPersonName,
+    this.deliveryPersonPhone,
     this.cancellationReason,
     this.cancelledBy,
     this.cancelledAt,
     this.refundStatus,
+    this.customerFcmToken,
   });
 
   factory OrderModel.fromFirestore(String id, Map<String, dynamic> data) {
@@ -81,10 +90,13 @@ class OrderModel {
       verificationCode: data['verificationCode']?.toString() ?? '',
       deliveryOtp: data['deliveryOtp']?.toString(),
       deliveryOtpCreatedAt: _parseDateTime(data['deliveryOtpCreatedAt']),
+      deliveryPersonName: data['deliveryPersonName']?.toString(),
+      deliveryPersonPhone: data['deliveryPersonPhone']?.toString(),
       cancellationReason: data['cancellationReason']?.toString(),
       cancelledBy: data['cancelledBy']?.toString(),
       cancelledAt: _parseDateTime(data['cancelledAt']),
       refundStatus: data['refundStatus']?.toString(),
+      customerFcmToken: data['customerFcmToken']?.toString(),
     );
   }
 
@@ -110,10 +122,13 @@ class OrderModel {
       'verificationCode': verificationCode,
       if (deliveryOtp != null) 'deliveryOtp': deliveryOtp,
       if (deliveryOtpCreatedAt != null) 'deliveryOtpCreatedAt': deliveryOtpCreatedAt,
+      if (deliveryPersonName != null) 'deliveryPersonName': deliveryPersonName,
+      if (deliveryPersonPhone != null) 'deliveryPersonPhone': deliveryPersonPhone,
       'cancellationReason': cancellationReason,
       'cancelledBy': cancelledBy,
       'cancelledAt': cancelledAt,
       'refundStatus': refundStatus,
+      if (customerFcmToken != null && customerFcmToken!.isNotEmpty) 'customerFcmToken': customerFcmToken,
     };
   }
 
@@ -144,10 +159,13 @@ class OrderModel {
     String? verificationCode,
     String? deliveryOtp,
     DateTime? deliveryOtpCreatedAt,
+    String? deliveryPersonName,
+    String? deliveryPersonPhone,
     String? cancellationReason,
     String? cancelledBy,
     DateTime? cancelledAt,
     String? refundStatus,
+    String? customerFcmToken,
   }) {
     return OrderModel(
       id: id ?? this.id,
@@ -171,10 +189,13 @@ class OrderModel {
       verificationCode: verificationCode ?? this.verificationCode,
       deliveryOtp: deliveryOtp ?? this.deliveryOtp,
       deliveryOtpCreatedAt: deliveryOtpCreatedAt ?? this.deliveryOtpCreatedAt,
+      deliveryPersonName: deliveryPersonName ?? this.deliveryPersonName,
+      deliveryPersonPhone: deliveryPersonPhone ?? this.deliveryPersonPhone,
       cancellationReason: cancellationReason ?? this.cancellationReason,
       cancelledBy: cancelledBy ?? this.cancelledBy,
       cancelledAt: cancelledAt ?? this.cancelledAt,
       refundStatus: refundStatus ?? this.refundStatus,
+      customerFcmToken: customerFcmToken ?? this.customerFcmToken,
     );
   }
 }

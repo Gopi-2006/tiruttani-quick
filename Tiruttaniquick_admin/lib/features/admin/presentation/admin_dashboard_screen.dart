@@ -724,10 +724,14 @@ class _OrdersTabState extends State<_OrdersTab> {
 
             if (customerId.isNotEmpty) {
               final notifTitle = status == OrderStatuses.outForDelivery
-                  ? 'Out for Delivery'
+                  ? 'Out for Delivery 🚚'
                   : 'Order Status Updated';
-              final notifBody = (status == OrderStatuses.outForDelivery && deliveryOtp != null && deliveryOtp.isNotEmpty)
-                  ? 'Order #${order.orderNumber} is on the way. Delivery OTP: $deliveryOtp'
+              final notifBody = (status == OrderStatuses.outForDelivery)
+                  ? (order.deliveryPersonName != null && order.deliveryPersonName!.isNotEmpty
+                      ? '${order.deliveryPersonName} is delivering your order.${deliveryOtp != null && deliveryOtp.isNotEmpty ? ' Delivery OTP: $deliveryOtp' : ''}'
+                      : (deliveryOtp != null && deliveryOtp.isNotEmpty
+                          ? 'Order #${order.orderNumber} is on the way. Delivery OTP: $deliveryOtp'
+                          : 'Order #${order.orderNumber} is on the way.'))
                   : 'Order #${order.orderNumber} is now $status';
 
               await widget.firestore.createNotification(
@@ -738,13 +742,17 @@ class _OrdersTabState extends State<_OrdersTab> {
               );
 
               // Dispatch Push Notification via Cloudflare Worker (FCM HTTP v1)
-              NotificationSenderService.instance.sendOrderStatusNotification(
+              final sent = await NotificationSenderService.instance.sendOrderStatusNotification(
                 orderId: order.id,
                 orderNumber: order.orderNumber,
                 customerId: customerId,
                 status: status,
                 deliveryOtp: deliveryOtp,
+                deliveryPersonName: order.deliveryPersonName,
               );
+              if (!sent) {
+                debugPrint('[FCM DIAGNOSTICS] Customer push failed for order ${order.id} (dashboard)');
+              }
             }
 
             // Acknowledge and stop any repeating new-order alert when status is updated
@@ -898,16 +906,40 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
   bool _isExpanded = false;
   bool _detailsLoaded = false;
 
+  // Delivery Person Assignment State
+  bool _isEditingDeliveryPerson = false;
+  bool _isSavingDeliveryPerson = false;
+  final _deliveryNameController = TextEditingController();
+  final _deliveryPhoneController = TextEditingController();
+  final _deliveryFormKey = GlobalKey<FormState>();
+
   @override
   void initState() {
     super.initState();
     _currentStatus = widget.order.status;
     _isExpanded = widget.initiallyExpanded;
+    _syncDeliveryPersonFields();
     if (_isExpanded) {
       NewOrderAlertManager.instance.acknowledgeOrder(widget.order.id);
       _detailsFuture = _fetchDetails();
       _detailsLoaded = true;
     }
+  }
+
+  void _syncDeliveryPersonFields() {
+    if (widget.order.deliveryPersonName != null) {
+      _deliveryNameController.text = widget.order.deliveryPersonName!;
+    }
+    if (widget.order.deliveryPersonPhone != null) {
+      _deliveryPhoneController.text = widget.order.deliveryPersonPhone!;
+    }
+  }
+
+  @override
+  void dispose() {
+    _deliveryNameController.dispose();
+    _deliveryPhoneController.dispose();
+    super.dispose();
   }
 
   @override
@@ -917,6 +949,14 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
       setState(() {
         _currentStatus = widget.order.status;
       });
+    }
+
+    if (oldWidget.order.deliveryPersonName != widget.order.deliveryPersonName ||
+        oldWidget.order.deliveryPersonPhone != widget.order.deliveryPersonPhone) {
+      if (!_isEditingDeliveryPerson) {
+        _deliveryNameController.text = widget.order.deliveryPersonName ?? '';
+        _deliveryPhoneController.text = widget.order.deliveryPersonPhone ?? '';
+      }
     }
 
     if (oldWidget.order.id != widget.order.id || 
@@ -1614,6 +1654,10 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
                     },
                   ),
                 ] else ...[
+                  // Delivery Person Assignment Section (Admin Only)
+                  _buildDeliveryPersonSection(context),
+                  const SizedBox(height: 16),
+
                   // Normal order status selector
                   GestureDetector(
                     onTap: () {}, // Prevent collapse when tapping dropdown/actions
@@ -1646,6 +1690,306 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleAssignDeliveryPerson() async {
+    if (!_deliveryFormKey.currentState!.validate()) return;
+
+    setState(() => _isSavingDeliveryPerson = true);
+    try {
+      final name = _deliveryNameController.text.trim();
+      final phone = _deliveryPhoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
+
+      await widget.firestore.assignDeliveryPerson(
+        orderId: widget.order.id,
+        deliveryPersonName: name,
+        deliveryPersonPhone: phone,
+      );
+
+      setState(() {
+        _isEditingDeliveryPerson = false;
+        _isSavingDeliveryPerson = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Delivery person "$name" assigned successfully.')),
+        );
+      }
+    } catch (e) {
+      setState(() => _isSavingDeliveryPerson = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to assign delivery person: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleRemoveDeliveryPerson() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Delivery Person?'),
+        content: Text(
+          'Remove delivery person from Order #${widget.order.orderNumber}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _isSavingDeliveryPerson = true);
+      try {
+        await widget.firestore.removeDeliveryPerson(orderId: widget.order.id);
+        _deliveryNameController.clear();
+        _deliveryPhoneController.clear();
+        setState(() {
+          _isEditingDeliveryPerson = false;
+          _isSavingDeliveryPerson = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Delivery person removed.')),
+          );
+        }
+      } catch (e) {
+        setState(() => _isSavingDeliveryPerson = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to remove delivery person: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Widget _buildDeliveryPersonSection(BuildContext context) {
+    final hasDeliveryPerson = (widget.order.deliveryPersonName != null &&
+            widget.order.deliveryPersonName!.trim().isNotEmpty) &&
+        (widget.order.deliveryPersonPhone != null &&
+            widget.order.deliveryPersonPhone!.trim().isNotEmpty);
+
+    return GestureDetector(
+      onTap: () {}, // Prevent card tap collapsing
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (hasDeliveryPerson && !_isEditingDeliveryPerson)
+            _buildAssignedDeliveryPersonCard()
+          else
+            _buildDeliveryPersonForm(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAssignedDeliveryPersonCard() {
+    final name = widget.order.deliveryPersonName ?? '';
+    final phone = widget.order.deliveryPersonPhone ?? '';
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.delivery_dining, color: AppColors.primary, size: 22),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Delivery Person',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _deliveryNameController.text = name;
+                    _deliveryPhoneController.text = phone;
+                    _isEditingDeliveryPerson = true;
+                  });
+                },
+                icon: const Icon(Icons.edit, size: 14),
+                label: const Text('Edit', style: TextStyle(fontSize: 12)),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: _isSavingDeliveryPerson ? null : _handleRemoveDeliveryPerson,
+                icon: const Icon(Icons.delete_outline, size: 14, color: Colors.red),
+                label: const Text('Remove', style: TextStyle(fontSize: 12, color: Colors.red)),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Text('Delivery Person: ', style: TextStyle(fontSize: 13, color: AppColors.muted)),
+              Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Text('Phone: ', style: TextStyle(fontSize: 13, color: AppColors.muted)),
+              Text(phone, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              if (phone.isNotEmpty)
+                IconButton(
+                  onPressed: () => _launchDialer(phone),
+                  icon: const Icon(Icons.phone, size: 18, color: AppColors.primary),
+                  tooltip: 'Call Delivery Person',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeliveryPersonForm() {
+    return Form(
+      key: _deliveryFormKey,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.delivery_dining, color: AppColors.primary, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  _isEditingDeliveryPerson ? 'Edit Delivery Person' : 'Assign Delivery Person',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: AppColors.primary,
+                  ),
+                ),
+                if (_isEditingDeliveryPerson) ...[
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    tooltip: 'Cancel Edit',
+                    onPressed: () => setState(() => _isEditingDeliveryPerson = false),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _deliveryNameController,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Name',
+                hintText: "Enter delivery person's name",
+                prefixIcon: Icon(Icons.person_outline, size: 18),
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return "Enter delivery person's name";
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _deliveryPhoneController,
+              keyboardType: TextInputType.phone,
+              maxLength: 10,
+              decoration: const InputDecoration(
+                labelText: 'Phone Number',
+                hintText: 'Enter phone number',
+                prefixIcon: Icon(Icons.phone_outlined, size: 18),
+                counterText: '',
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Enter phone number';
+                }
+                final cleaned = value.replaceAll(RegExp(r'[^0-9]'), '');
+                if (!RegExp(r'^[6-9]\d{9}$').hasMatch(cleaned)) {
+                  return 'Enter valid 10-digit mobile number';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isSavingDeliveryPerson ? null : _handleAssignDeliveryPerson,
+                icon: _isSavingDeliveryPerson
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.check, size: 16),
+                label: Text(
+                  _isEditingDeliveryPerson ? 'Save Changes' : 'Assign Delivery Person',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

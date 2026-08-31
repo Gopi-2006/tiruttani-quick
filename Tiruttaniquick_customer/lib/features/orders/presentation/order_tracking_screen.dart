@@ -62,6 +62,28 @@ class OrderTrackingScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _callDeliveryPerson(BuildContext context, String phone) async {
+    final cleanPhone = phone.replaceAll(RegExp(r'[^0-9+]'), '');
+    final Uri phoneUri = Uri(scheme: 'tel', path: cleanPhone);
+    try {
+      if (await canLaunchUrl(phoneUri)) {
+        await launchUrl(phoneUri);
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not open phone dialer')),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening dialer: $e')),
+        );
+      }
+    }
+  }
+
   void _handleBack(BuildContext context) {
     if (Navigator.canPop(context)) {
       Navigator.pop(context);
@@ -131,6 +153,16 @@ class OrderTrackingScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (order.deliveryPersonName != null &&
+                      order.deliveryPersonName!.trim().isNotEmpty &&
+                      order.deliveryPersonPhone != null &&
+                      order.deliveryPersonPhone!.trim().isNotEmpty &&
+                      order.status != OrderStatuses.cancelled) ...[
+                    _DeliveryPartnerCard(
+                      order: order,
+                      onCall: () => _callDeliveryPerson(context, order.deliveryPersonPhone!),
+                    ),
+                  ],
                   if (isCancelable) ...[
                     const SizedBox(height: AppDimensions.spacingMedium),
                     SizedBox(
@@ -756,4 +788,139 @@ class _SummaryRow extends StatelessWidget {
     );
   }
 }
+
+class _DeliveryPartnerCard extends StatelessWidget {
+  final OrderModel order;
+  final VoidCallback? onCall;
+
+  const _DeliveryPartnerCard({required this.order, this.onCall});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = order.deliveryPersonName?.trim() ?? '';
+    final phone = order.deliveryPersonPhone?.trim() ?? '';
+
+    if (name.isEmpty || phone.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        const SizedBox(height: AppDimensions.spacingMedium),
+        Card(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLarge),
+            side: BorderSide(color: AppColors.primary.withValues(alpha: 0.25), width: 1.2),
+          ),
+          elevation: 1,
+          child: Padding(
+            padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.delivery_dining,
+                        color: AppColors.primary,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Delivery Partner',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.muted,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            'Assigned for your delivery',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 20),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.text,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.phone, size: 14, color: AppColors.muted),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  phone,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: AppColors.muted,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (onCall != null && phone.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: onCall,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusNormal),
+                          ),
+                        ),
+                        icon: const Icon(Icons.call, size: 16),
+                        label: const Text(
+                          'Call',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
   

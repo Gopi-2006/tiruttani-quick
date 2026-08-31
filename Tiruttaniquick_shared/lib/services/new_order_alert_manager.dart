@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 /// Singleton manager for continuous repeating NEW ORDER alerts on Admin devices.
@@ -21,6 +23,8 @@ class NewOrderAlertManager {
   Timer? _repeatingTimer;
   bool _isPlaying = false;
   int _alertTickCount = 0;
+  AudioPlayer? _audioPlayer;
+  Uint8List? _cachedAudioBytes;
 
   /// Reactive notifier containing the list of active unacknowledged new orders.
   /// Used by foreground UI banners/overlays.
@@ -80,6 +84,10 @@ class NewOrderAlertManager {
     final normalizedId = orderId.trim();
 
     if (!_activeOrderIds.contains(normalizedId)) {
+      // Force stop audio if no active orders remain
+      if (_activeOrderIds.isEmpty) {
+        _stopAlertLoop();
+      }
       return;
     }
 
@@ -137,7 +145,7 @@ class NewOrderAlertManager {
     });
   }
 
-  /// Stops the repeating audio timer and silences the ringtone
+  /// Stops the repeating audio timer and silences all audio immediately
   void _stopAlertLoop() {
     _repeatingTimer?.cancel();
     _repeatingTimer = null;
@@ -145,28 +153,64 @@ class NewOrderAlertManager {
     _alertTickCount = 0;
 
     try {
-      FlutterRingtonePlayer().stop().catchError((e) {
-        debugPrint('[NewOrderAlertManager] Error stopping ringtone player: $e');
-      });
+      _audioPlayer?.stop();
     } catch (e) {
-      debugPrint('[NewOrderAlertManager] Error stopping ringtone player: $e');
+      debugPrint('[NewOrderAlertManager] Error stopping AudioPlayer: $e');
+    }
+
+    try {
+      FlutterRingtonePlayer().stop();
+    } catch (e) {
+      debugPrint('[NewOrderAlertManager] Error stopping FlutterRingtonePlayer: $e');
     }
   }
 
-  /// Plays a single alert chime cycle
-  void _playChime() {
+  /// Plays a single alert chime cycle using order_received.mp3
+  Future<void> _playChime() async {
     try {
-      FlutterRingtonePlayer().play(
-        android: AndroidSounds.notification,
-        ios: IosSounds.glass,
-        looping: false,
+      _audioPlayer ??= AudioPlayer();
+      await _audioPlayer!.setVolume(1.0);
+      await _audioPlayer!.setReleaseMode(ReleaseMode.stop);
+
+      // Preload audio bytes from asset if not cached
+      if (_cachedAudioBytes == null) {
+        try {
+          final ByteData data = await rootBundle.load('assets/sounds/order_received.mp3');
+          _cachedAudioBytes = data.buffer.asUint8List();
+        } catch (_) {
+          try {
+            final ByteData data = await rootBundle.load('assets/order_received.mp3');
+            _cachedAudioBytes = data.buffer.asUint8List();
+          } catch (_) {}
+        }
+      }
+
+      if (_cachedAudioBytes != null && _cachedAudioBytes!.isNotEmpty) {
+        await _audioPlayer!.stop();
+        await _audioPlayer!.play(BytesSource(_cachedAudioBytes!), volume: 1.0);
+        return;
+      }
+
+      // Fallback: AssetSource
+      await _audioPlayer!.stop();
+      await _audioPlayer!.play(
+        AssetSource('sounds/order_received.mp3'),
         volume: 1.0,
-        asAlarm: true,
-      ).catchError((e) {
-        debugPrint('[NewOrderAlertManager] Audio chime playback error: $e');
-      });
+      );
     } catch (e) {
-      debugPrint('[NewOrderAlertManager] Audio chime playback error: $e');
+      debugPrint('[NewOrderAlertManager] AudioPlayer playback error, using fallback: $e');
+      try {
+        FlutterRingtonePlayer().play(
+          fromAsset: 'assets/sounds/order_received.mp3',
+          android: AndroidSounds.notification,
+          ios: IosSounds.glass,
+          looping: false,
+          volume: 1.0,
+          asAlarm: true,
+        );
+      } catch (e2) {
+        debugPrint('[NewOrderAlertManager] All audio playback attempts failed: $e2');
+      }
     }
   }
 
@@ -184,5 +228,11 @@ class NewOrderAlertManager {
     _activeOrderIds.clear();
     _orderDetails.clear();
     activeOrdersNotifier.value = [];
+    try {
+      _audioPlayer?.stop();
+    } catch (_) {}
+    try {
+      FlutterRingtonePlayer().stop();
+    } catch (_) {}
   }
 }

@@ -16,7 +16,7 @@ import 'services/current_user_provider.dart';
 import 'firebase_options.dart';
 
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
     if (Firebase.apps.isEmpty) {
@@ -24,19 +24,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         options: DefaultFirebaseOptions.currentPlatform,
       );
     }
-    if (message.data['type'] == 'new_order') {
-      final orderId = message.data['orderId']?.toString() ?? '';
-      if (orderId.isNotEmpty) {
-        NewOrderAlertManager.instance.handleNewOrderReceived(
-          orderId: orderId,
-          orderNumber: message.data['orderNumber']?.toString(),
-          totalAmount: double.tryParse(message.data['totalAmount']?.toString() ?? '0'),
-          customerName: message.data['customerName']?.toString(),
-          customerId: message.data['customerId']?.toString(),
-          rawPayload: message.data,
-        );
-      }
-    }
+    // Note: Android OS natively handles the background notification display and sound
+    // via the high-priority notification channel ('tq_new_orders_v4').
+    final truncatedId = message.messageId != null && message.messageId!.length > 8
+        ? message.messageId!.substring(message.messageId!.length - 8)
+        : message.messageId;
+    debugPrint('[Admin Background Messaging] FCM background message received: $truncatedId');
   } catch (e) {
     debugPrint('[Admin Background Messaging Error] $e');
   }
@@ -93,26 +86,24 @@ void main() async {
     ),
   );
 
-  AuthPerformanceLogger.stopAndLog(appStartupStopwatch, 'Admin App Startup');
+  // Apply Firestore offline-persistence settings exactly once
+  FirestoreService.configure();
 
-  // Start background services asynchronously to enable instant UI rendering
-  _initializeBackgroundServices();
-
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-  runApp(const GroceryApp());
-}
-
-
-void _initializeBackgroundServices() async {
+  // Initialize Firebase App Check
   try {
-    // Initialize Firebase App Check
     await FirebaseAppCheck.instance.activate(
       androidProvider: kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
       appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.deviceCheck,
     );
+  } catch (e) {
+    debugPrint('AppCheck initialization warning: $e');
+  }
 
-    // Initialize our NotificationService
+  // Register background message handler
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+  // Initialize NotificationService before runApp() for synchronous channel setup and tap handling
+  try {
     await NotificationService.instance.initialize(
       onNotificationTap: (payload) {
         debugPrint('[Admin Main] Notification Tapped: $payload');
@@ -133,8 +124,12 @@ void _initializeBackgroundServices() async {
       },
     );
   } catch (e) {
-    debugPrint('Background services initialization error: $e');
+    debugPrint('NotificationService initialization error: $e');
   }
+
+  AuthPerformanceLogger.stopAndLog(appStartupStopwatch, 'Admin App Startup');
+
+  runApp(const GroceryApp());
 }
 
 void showOrderDetailsDialog(String orderId) async {
@@ -222,10 +217,14 @@ void showOrderDetailsDialog(String orderId) async {
 
                       if (customerId != null && customerId.isNotEmpty) {
                         final notifTitle = status == OrderStatuses.outForDelivery
-                            ? 'Out for Delivery'
+                            ? 'Out for Delivery 🚚'
                             : 'Order Status Updated';
-                        final notifBody = (status == OrderStatuses.outForDelivery && deliveryOtp != null && deliveryOtp.isNotEmpty)
-                            ? 'Order #${order.orderNumber} is on the way. Delivery OTP: $deliveryOtp'
+                        final notifBody = (status == OrderStatuses.outForDelivery)
+                            ? (order.deliveryPersonName != null && order.deliveryPersonName!.isNotEmpty
+                                ? '${order.deliveryPersonName} is delivering your order.${deliveryOtp != null && deliveryOtp.isNotEmpty ? ' Delivery OTP: $deliveryOtp' : ''}'
+                                : (deliveryOtp != null && deliveryOtp.isNotEmpty
+                                    ? 'Order #${order.orderNumber} is on the way. Delivery OTP: $deliveryOtp'
+                                    : 'Order #${order.orderNumber} is on the way.'))
                             : 'Order #${order.orderNumber} is now $status';
 
                         await firestore.createNotification(
@@ -236,13 +235,17 @@ void showOrderDetailsDialog(String orderId) async {
                         );
 
                         // Dispatch Push Notification via Cloudflare Worker (FCM HTTP v1)
-                        NotificationSenderService.instance.sendOrderStatusNotification(
+                        final sent = await NotificationSenderService.instance.sendOrderStatusNotification(
                           orderId: order.id,
                           orderNumber: order.orderNumber,
                           customerId: customerId,
                           status: status,
                           deliveryOtp: deliveryOtp,
+                          deliveryPersonName: order.deliveryPersonName,
                         );
+                        if (!sent) {
+                          debugPrint('[FCM DIAGNOSTICS] Customer push failed for order ${order.id} (main)');
+                        }
                       }
 
                       await firestore.updateOrderStatus(

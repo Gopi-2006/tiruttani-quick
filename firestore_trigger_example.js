@@ -165,8 +165,8 @@ exports.onOrderCreated = onDocumentCreated("orders/{orderId}", async (event) => 
       android: {
         priority: "high",
         notification: {
-          channelId: "admin_new_orders_v2",
-          sound: "new_order_alert",
+          channelId: "admin_new_orders_v3",
+          sound: "order_received",
           defaultSound: false,
           defaultVibrateTimings: true,
           notificationPriority: "PRIORITY_HIGH",
@@ -176,7 +176,7 @@ exports.onOrderCreated = onDocumentCreated("orders/{orderId}", async (event) => 
       apns: {
         payload: {
           aps: {
-            sound: "new_order_alert.wav",
+            sound: "order_received.mp3",
             badge: 1,
           },
         },

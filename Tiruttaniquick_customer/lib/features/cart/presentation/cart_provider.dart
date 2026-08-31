@@ -99,7 +99,7 @@ class CartProvider extends ChangeNotifier {
 
   void _clearLocalState() {
     _userId = null;
-    _cartReady = false;
+    _cartReady = true;
     _loading = false;
     _isInitializing = false;
     _items.clear();

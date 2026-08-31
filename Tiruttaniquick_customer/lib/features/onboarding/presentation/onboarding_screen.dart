@@ -19,8 +19,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       icon: Icons.eco_rounded,
       headline: 'Fresh Groceries,\nDelivered Fast',
       subtext:
-          'Discover farm-fresh vegetables, fruits, daily dairy, and household essentials delivered right to your doorstep.',
-      badgeText: 'Farm Fresh Quality',
+          'Discover farm-fresh grocery, daily dairy, and household essentials delivered right to your doorstep.',
+      badgeText: 'Quality Grocery',
     ),
     _OnboardingSlideData(
       icon: Icons.electric_bolt_rounded,

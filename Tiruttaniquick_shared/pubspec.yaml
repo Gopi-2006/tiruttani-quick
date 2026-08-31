@@ -23,4 +23,10 @@ dependencies:
   shared_preferences: ^2.5.5
   flutter_blurhash: ^0.9.1
   flutter_ringtone_player: ^4.0.0
+  audioplayers: ^6.8.1
+
+flutter:
+  assets:
+    - assets/
+    - assets/sounds/
 

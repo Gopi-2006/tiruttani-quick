@@ -672,10 +672,14 @@ class _OrderReportsTabState extends State<OrderReportsTab> {
 
                 if (order.customerId.isNotEmpty) {
                   final notifTitle = status == OrderStatuses.outForDelivery
-                      ? 'Out for Delivery'
+                      ? 'Out for Delivery 🚚'
                       : 'Order Status Updated';
-                  final notifBody = (status == OrderStatuses.outForDelivery && deliveryOtp != null && deliveryOtp.isNotEmpty)
-                      ? 'Order #${order.orderNumber} is on the way. Delivery OTP: $deliveryOtp'
+                  final notifBody = (status == OrderStatuses.outForDelivery)
+                      ? (order.deliveryPersonName != null && order.deliveryPersonName!.isNotEmpty
+                          ? '${order.deliveryPersonName} is delivering your order.${deliveryOtp != null && deliveryOtp.isNotEmpty ? ' Delivery OTP: $deliveryOtp' : ''}'
+                          : (deliveryOtp != null && deliveryOtp.isNotEmpty
+                              ? 'Order #${order.orderNumber} is on the way. Delivery OTP: $deliveryOtp'
+                              : 'Order #${order.orderNumber} is on the way.'))
                       : 'Order #${order.orderNumber} is now $status';
 
                   await widget.firestore.createNotification(
@@ -685,13 +689,17 @@ class _OrderReportsTabState extends State<OrderReportsTab> {
                     orderId: order.id,
                   );
 
-                  NotificationSenderService.instance.sendOrderStatusNotification(
+                  final sent = await NotificationSenderService.instance.sendOrderStatusNotification(
                     orderId: order.id,
                     orderNumber: order.orderNumber,
                     customerId: order.customerId,
                     status: status,
                     deliveryOtp: deliveryOtp,
+                    deliveryPersonName: order.deliveryPersonName,
                   );
+                  if (!sent) {
+                    debugPrint('[FCM DIAGNOSTICS] Customer push failed for order ${order.id} (reports)');
+                  }
                 }
 
                 if (context.mounted) Navigator.pop(context);

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../features/cart/presentation/cart_provider.dart';
+import '../../services/current_user_provider.dart';
 
 class AnimatedAddToCartButton extends StatefulWidget {
   final ProductModel product;
@@ -75,14 +76,15 @@ class _AnimatedAddToCartButtonState extends State<AnimatedAddToCartButton>
   @override
   Widget build(BuildContext context) {
     final cartProvider = context.watch<CartProvider>();
+    final currentUser = context.watch<CurrentUserProvider>();
     final qty = widget.cartItem?.quantity ?? 0;
     final isOutOfStock = widget.variant != null
         ? widget.variant!.isOutOfStock
         : widget.product.isOutOfStock;
 
     // While the cart is still loading (first-login race window), show a small
-    // spinner inside the ADD button instead of silently doing nothing.
-    final bool cartInitializing = !cartProvider.isCartReady && qty == 0;
+    // spinner inside the ADD button only if user is logged in and cart is initializing.
+    final bool cartInitializing = currentUser.isAuthenticated && !cartProvider.isCartReady && qty == 0;
 
     return ScaleTransition(
       scale: _scaleAnimation,

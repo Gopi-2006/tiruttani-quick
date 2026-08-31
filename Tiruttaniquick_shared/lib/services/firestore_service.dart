@@ -17,16 +17,36 @@ import 'product_search_engine.dart';
 class FirestoreService {
   FirebaseFirestore get _db => FirebaseFirestore.instance;
 
-  FirestoreService() {
+  static bool _settingsConfigured = false;
+
+  /// Apply Firestore offline-persistence settings **exactly once**.
+  ///
+  /// Call this from `main()` immediately after [Firebase.initializeApp()]
+  /// and before [runApp()] — i.e. before any Firestore read/write fires.
+  /// Calling it multiple times is safe; subsequent calls are no-ops.
+  ///
+  /// Background: The Firestore SDK throws if [FirebaseFirestore.settings] is
+  /// mutated after the first network operation has started.  The old pattern
+  /// of setting it inside the [FirestoreService()] constructor was called
+  /// multiple times (checkout screen, startup provider, DI provider), which
+  /// could disrupt the SDK's internal gRPC channel on Android and produce a
+  /// transient `cloud_firestore/unavailable` error.
+  static void configure() {
+    if (_settingsConfigured) return;
+    _settingsConfigured = true;
     try {
-      _db.settings = const Settings(
+      FirebaseFirestore.instance.settings = const Settings(
         persistenceEnabled: true,
         cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
       );
     } catch (_) {
-      // Ignore if settings were already configured elsewhere
+      // Settings can only be applied before the first Firestore operation.
+      // If the SDK has already started (e.g. on a hot restart), this is a no-op.
     }
   }
+
+  // Constructor is intentionally empty — settings are applied via configure().
+  FirestoreService();
 
   Stream<List<CategoryModel>> categoriesStream() {
     return _db
@@ -253,6 +273,33 @@ class FirestoreService {
       'status': status,
       'statusIndex': OrderStatuses.index(status),
       ...extra,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Assign or update delivery person details for an order (Admin only)
+  Future<void> assignDeliveryPerson({
+    required String orderId,
+    required String deliveryPersonName,
+    required String deliveryPersonPhone,
+  }) async {
+    final cleanName = deliveryPersonName.trim();
+    final cleanPhone = deliveryPersonPhone.replaceAll(RegExp(r'[^0-9]'), '');
+
+    await _db.collection('orders').doc(orderId).update({
+      'deliveryPersonName': cleanName,
+      'deliveryPersonPhone': cleanPhone,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Remove delivery person assignment from an order (Admin only)
+  Future<void> removeDeliveryPerson({
+    required String orderId,
+  }) async {
+    await _db.collection('orders').doc(orderId).update({
+      'deliveryPersonName': FieldValue.delete(),
+      'deliveryPersonPhone': FieldValue.delete(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }

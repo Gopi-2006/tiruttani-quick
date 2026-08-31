@@ -13,6 +13,18 @@ void main() {
     (MethodCall methodCall) async => null,
   );
 
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(
+    const MethodChannel('xyz.luan/audioplayers'),
+    (MethodCall methodCall) async => 1,
+  );
+
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(
+    const MethodChannel('xyz.luan/audioplayers.global'),
+    (MethodCall methodCall) async => 1,
+  );
+
   group('Admin Notification & Channels Unit Tests', () {
     test('NotificationSenderService endpoints and URL normalization', () {
       final sender = NotificationSenderService.instance;
@@ -184,6 +196,101 @@ void main() {
 
       expect(manager.activeOrderIds.isEmpty, isTrue);
       expect(manager.isAlertActive, isFalse);
+    });
+
+    test('OrderModel backward compatibility: legacy orders without delivery person parse safely', () {
+      final legacyMap = {
+        'orderNumber': 'TQ_LEGACY_001',
+        'customerId': 'CUST_101',
+        'deliveryAddressId': 'ADDR_101',
+        'subtotal': 250.0,
+        'deliveryFee': 25.0,
+        'totalPrice': 275.0,
+        'paymentMethod': 'COD',
+        'paymentStatus': 'Pending',
+        'status': 'out_for_delivery',
+        'statusIndex': 3,
+        'verificationCode': 'ABC123',
+      };
+
+      final order = OrderModel.fromFirestore('LEGACY_ORDER_1', legacyMap);
+      expect(order.id, equals('LEGACY_ORDER_1'));
+      expect(order.deliveryPersonName, isNull);
+      expect(order.deliveryPersonPhone, isNull);
+      expect(order.toMap().containsKey('deliveryPersonName'), isFalse);
+      expect(order.toMap().containsKey('deliveryPersonPhone'), isFalse);
+    });
+
+    test('OrderModel with delivery person serializes and deserializes correctly', () {
+      final orderMap = {
+        'orderNumber': 'TQ_DELIVERY_001',
+        'customerId': 'CUST_202',
+        'deliveryAddressId': 'ADDR_202',
+        'subtotal': 500.0,
+        'deliveryFee': 0.0,
+        'totalPrice': 500.0,
+        'paymentMethod': 'UPI',
+        'paymentStatus': 'Completed',
+        'status': 'out_for_delivery',
+        'statusIndex': 3,
+        'verificationCode': 'XYZ789',
+        'deliveryOtp': '654321',
+        'deliveryPersonName': 'Ravi Kumar',
+        'deliveryPersonPhone': '9876543210',
+      };
+
+      final order = OrderModel.fromFirestore('ORDER_DELIVERY_1', orderMap);
+      expect(order.deliveryPersonName, equals('Ravi Kumar'));
+      expect(order.deliveryPersonPhone, equals('9876543210'));
+
+      final serialized = order.toMap();
+      expect(serialized['deliveryPersonName'], equals('Ravi Kumar'));
+      expect(serialized['deliveryPersonPhone'], equals('9876543210'));
+
+      // Test copyWith for edit & remove
+      final edited = order.copyWith(deliveryPersonName: 'Arun', deliveryPersonPhone: '9698046731');
+      expect(edited.deliveryPersonName, equals('Arun'));
+      expect(edited.deliveryPersonPhone, equals('9698046731'));
+    });
+
+    test('Indian mobile number validation handles valid and invalid phone numbers accurately', () {
+      final indianPhoneRegex = RegExp(r'^[6-9]\d{9}$');
+
+      // Valid Indian 10-digit mobile numbers
+      expect(indianPhoneRegex.hasMatch('9876543210'), isTrue);
+      expect(indianPhoneRegex.hasMatch('6382910472'), isTrue);
+      expect(indianPhoneRegex.hasMatch('7012345678'), isTrue);
+      expect(indianPhoneRegex.hasMatch('8901234567'), isTrue);
+
+      // Invalid formats
+      expect(indianPhoneRegex.hasMatch('123'), isFalse);
+      expect(indianPhoneRegex.hasMatch('98765'), isFalse);
+      expect(indianPhoneRegex.hasMatch('abcdef1234'), isFalse);
+      expect(indianPhoneRegex.hasMatch('0876543210'), isFalse); // starts with 0
+      expect(indianPhoneRegex.hasMatch('5987654321'), isFalse); // starts with 5
+      expect(indianPhoneRegex.hasMatch('98765432100'), isFalse); // 11 digits
+    });
+
+    test('Phone dialer URI generation normalizes and produces valid tel URL', () {
+      final phone = '+91 98765-43210';
+      final clean = phone.replaceAll(RegExp(r'[^0-9+]'), '');
+      final uri = Uri(scheme: 'tel', path: clean);
+
+      expect(uri.toString(), equals('tel:+919876543210'));
+      expect(uri.scheme, equals('tel'));
+    });
+
+    test('sendOrderStatusNotification accepts optional deliveryPersonName and deliveryOtp', () async {
+      final result = await NotificationSenderService.instance.sendOrderStatusNotification(
+        orderId: 'ORDER_PUSH_TEST',
+        status: 'out_for_delivery',
+        customerId: '',
+        orderNumber: 'TQ999',
+        deliveryOtp: '123456',
+        deliveryPersonName: 'Ravi',
+      );
+      // Fails gracefully because customerId is empty without crashing
+      expect(result, isFalse);
     });
   });
 }

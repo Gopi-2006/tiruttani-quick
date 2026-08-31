@@ -43,7 +43,7 @@ export function normalizeStatus(rawStatus) {
 /**
  * Generates user-facing title and body for each status.
  */
-export function getNotificationContent(statusKey, orderId, orderNumber, deliveryOtp) {
+export function getNotificationContent(statusKey, orderId, orderNumber, deliveryOtp, deliveryPersonName) {
   const displayId = orderNumber || (orderId ? (orderId.length > 8 ? orderId.substring(0, 8) : orderId) : '');
   const idText = displayId ? ` #${displayId}` : '';
 
@@ -58,13 +58,16 @@ export function getNotificationContent(statusKey, orderId, orderNumber, delivery
         title: 'Order Packed',
         body: `Your Tiruttani Quick order${idText} has been packed and is ready.`,
       };
-    case NOTIFICATION_STATUSES.OUT_FOR_DELIVERY:
+    case NOTIFICATION_STATUSES.OUT_FOR_DELIVERY: {
+      const partnerText = deliveryPersonName
+        ? `${deliveryPersonName} is delivering your order.`
+        : `Your Tiruttani Quick order${idText} is on the way.`;
+      const otpText = deliveryOtp ? ` Delivery OTP: ${deliveryOtp}` : '';
       return {
-        title: 'Out for Delivery',
-        body: deliveryOtp
-          ? `Your Tiruttani Quick order${idText} is on the way. Delivery OTP: ${deliveryOtp}`
-          : `Your Tiruttani Quick order${idText} is on the way.`,
+        title: 'Out for Delivery 🚚',
+        body: `${partnerText}${otpText}`.trim(),
       };
+    }
     case NOTIFICATION_STATUSES.DELIVERED:
       return {
         title: 'Order Delivered',
@@ -91,8 +94,8 @@ export function getNotificationContent(statusKey, orderId, orderNumber, delivery
 /**
  * Builds the FCM HTTP v1 JSON message structure for an individual registration token.
  */
-export function buildFcmV1Message({ token, statusKey, orderId, orderNumber, deliveryOtp }) {
-  const content = getNotificationContent(statusKey, orderId, orderNumber, deliveryOtp);
+export function buildFcmV1Message({ token, statusKey, orderId, orderNumber, deliveryOtp, deliveryPersonName }) {
+  const content = getNotificationContent(statusKey, orderId, orderNumber, deliveryOtp, deliveryPersonName);
 
   return {
     message: {
@@ -107,17 +110,26 @@ export function buildFcmV1Message({ token, statusKey, orderId, orderNumber, deli
         status: String(statusKey || ''),
         screen: statusKey === 'test' ? 'home' : 'order_tracking',
         deliveryOtp: String(deliveryOtp || ''),
+        deliveryPersonName: String(deliveryPersonName || ''),
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
       },
       android: {
-        priority: 'high',
+        priority: 'HIGH',
         notification: {
-          channel_id: 'orders_channel',
+          channel_id: 'tq_order_status_v4',
           sound: 'default',
           click_action: 'FLUTTER_NOTIFICATION_CLICK',
           default_sound: true,
           default_vibrate_timings: true,
           notification_priority: 'PRIORITY_HIGH',
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+            badge: 1,
+          },
         },
       },
     },
@@ -126,7 +138,7 @@ export function buildFcmV1Message({ token, statusKey, orderId, orderNumber, deli
 
 /**
  * Builds the FCM HTTP v1 JSON message structure for an Admin New Order Alert.
- * Targets the 'admin_new_orders' high-priority notification channel with custom alert sound.
+ * Targets the 'tq_new_orders_v4' high-priority notification channel with custom alert sound.
  */
 export function buildAdminNewOrderFcmMessage({ token, orderId, orderNumber, totalAmount, customerName, customerId }) {
   const displayNum = orderNumber || (orderId ? (orderId.length > 8 ? orderId.substring(0, 8) : orderId) : '');
@@ -153,10 +165,10 @@ export function buildAdminNewOrderFcmMessage({ token, orderId, orderNumber, tota
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
       },
       android: {
-        priority: 'high',
+        priority: 'HIGH',
         notification: {
-          channel_id: 'admin_new_orders_v2',
-          sound: 'new_order_alert',
+          channel_id: 'tq_new_orders_v4',
+          sound: 'order_received',
           click_action: 'FLUTTER_NOTIFICATION_CLICK',
           default_sound: false,
           default_vibrate_timings: true,
@@ -166,7 +178,7 @@ export function buildAdminNewOrderFcmMessage({ token, orderId, orderNumber, tota
       apns: {
         payload: {
           aps: {
-            sound: 'new_order_alert.wav',
+            sound: 'order_received.mp3',
             badge: 1,
           },
         },

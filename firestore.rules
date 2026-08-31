@@ -43,7 +43,11 @@ service cloud.firestore {
       
       // On update, users can't change their role unless they are an admin
       allow update: if isSignedIn() && (
-        (userId == userId() && request.resource.data.role == resource.data.role) || 
+        (userId == userId() && (
+          !('role' in request.resource.data) ||
+          !('role' in resource.data) ||
+          request.resource.data.role == resource.data.role
+        )) || 
         isAdmin()
       );
       
