@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -361,7 +362,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
               ],
             ),
-      body: tabs[_currentTab],
+      body: IndexedStack(
+        index: _currentTab,
+        children: tabs,
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentTab,
         onDestinationSelected: (index) => setState(() => _currentTab = index),
@@ -669,6 +673,22 @@ class _OrdersTab extends StatefulWidget {
 class _OrdersTabState extends State<_OrdersTab> {
   Set<String>? _knownOrderIds;
   String _searchQuery = '';
+  Timer? _searchDebounceTimer;
+
+  @override
+  void dispose() {
+    _searchDebounceTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String val) {
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) {
+        setState(() => _searchQuery = val.trim().toLowerCase());
+      }
+    });
+  }
 
   Future<String?> _getCustomerId(String orderId) async {
     final doc = await FirebaseFirestore.instance.collection('orders').doc(orderId).get();
@@ -705,14 +725,16 @@ class _OrdersTabState extends State<_OrdersTab> {
 
             final Map<String, dynamic> extra = {};
             String? deliveryOtp = order.deliveryOtp;
+            final normalizedStatus = OrderStatuses.normalize(status);
 
-            if (status == OrderStatuses.delivered) {
+            if (normalizedStatus == OrderStatuses.delivered) {
               extra['deliveredAt'] = FieldValue.serverTimestamp();
-            } else if (status == OrderStatuses.confirmed) {
+            } else if (normalizedStatus == OrderStatuses.accepted) {
+              extra['acceptedAt'] = FieldValue.serverTimestamp();
               extra['confirmedAt'] = FieldValue.serverTimestamp();
-            } else if (status == OrderStatuses.packed) {
+            } else if (normalizedStatus == OrderStatuses.packing) {
               extra['packedAt'] = FieldValue.serverTimestamp();
-            } else if (status == OrderStatuses.outForDelivery) {
+            } else if (normalizedStatus == OrderStatuses.outForDelivery) {
               extra['outForDeliveryAt'] = FieldValue.serverTimestamp();
               if (deliveryOtp == null || deliveryOtp.isEmpty) {
                 final random = math.Random.secure();
@@ -722,17 +744,20 @@ class _OrdersTabState extends State<_OrdersTab> {
               }
             }
 
-            if (customerId.isNotEmpty) {
-              final notifTitle = status == OrderStatuses.outForDelivery
+              final partnerName = (order.deliveryPersonName != null && order.deliveryPersonName!.isNotEmpty)
+                  ? order.deliveryPersonName
+                  : null;
+
+              final notifTitle = normalizedStatus == OrderStatuses.outForDelivery
                   ? 'Out for Delivery 🚚'
                   : 'Order Status Updated';
-              final notifBody = (status == OrderStatuses.outForDelivery)
-                  ? (order.deliveryPersonName != null && order.deliveryPersonName!.isNotEmpty
-                      ? '${order.deliveryPersonName} is delivering your order.${deliveryOtp != null && deliveryOtp.isNotEmpty ? ' Delivery OTP: $deliveryOtp' : ''}'
+              final notifBody = (normalizedStatus == OrderStatuses.outForDelivery)
+                  ? (partnerName != null && partnerName.isNotEmpty
+                      ? '$partnerName is delivering your order.${deliveryOtp != null && deliveryOtp.isNotEmpty ? ' Delivery OTP: $deliveryOtp' : ''}'
                       : (deliveryOtp != null && deliveryOtp.isNotEmpty
                           ? 'Order #${order.orderNumber} is on the way. Delivery OTP: $deliveryOtp'
                           : 'Order #${order.orderNumber} is on the way.'))
-                  : 'Order #${order.orderNumber} is now $status';
+                  : 'Order #${order.orderNumber} is now ${OrderStatuses.display(status)}';
 
               await widget.firestore.createNotification(
                 userId: customerId,
@@ -741,19 +766,9 @@ class _OrdersTabState extends State<_OrdersTab> {
                 orderId: order.id,
               );
 
-              // Dispatch Push Notification via Cloudflare Worker (FCM HTTP v1)
-              final sent = await NotificationSenderService.instance.sendOrderStatusNotification(
-                orderId: order.id,
-                orderNumber: order.orderNumber,
-                customerId: customerId,
-                status: status,
-                deliveryOtp: deliveryOtp,
-                deliveryPersonName: order.deliveryPersonName,
-              );
-              if (!sent) {
-                debugPrint('[FCM DIAGNOSTICS] Customer push failed for order ${order.id} (dashboard)');
+              if (partnerName != null && partnerName.isNotEmpty) {
+                extra['deliveryPersonName'] = partnerName;
               }
-            }
 
             // Acknowledge and stop any repeating new-order alert when status is updated
             NewOrderAlertManager.instance.acknowledgeOrder(order.id);
@@ -801,14 +816,18 @@ class _OrdersTabState extends State<_OrdersTab> {
                  o.verificationCode.toLowerCase().contains(_searchQuery);
         }).toList();
 
-        final pendingOrders = filteredOrders.where((o) => o.status == OrderStatuses.pending).toList();
-        final activeOrders = filteredOrders.where((o) => 
-          o.status == OrderStatuses.confirmed || 
-          o.status == OrderStatuses.packed || 
-          o.status == OrderStatuses.outForDelivery
-        ).toList();
-        final deliveredOrders = filteredOrders.where((o) => o.status == OrderStatuses.delivered).toList();
-        final cancelledOrders = filteredOrders.where((o) => o.status == OrderStatuses.cancelled).toList();
+        final pendingOrders = filteredOrders.where((o) =>
+          OrderStatuses.normalize(o.status) == OrderStatuses.orderPlaced).toList();
+        final activeOrders = filteredOrders.where((o) {
+          final norm = OrderStatuses.normalize(o.status);
+          return norm == OrderStatuses.accepted ||
+                 norm == OrderStatuses.packing ||
+                 norm == OrderStatuses.outForDelivery;
+        }).toList();
+        final deliveredOrders = filteredOrders.where((o) =>
+          OrderStatuses.normalize(o.status) == OrderStatuses.delivered).toList();
+        final cancelledOrders = filteredOrders.where((o) =>
+          OrderStatuses.normalize(o.status) == OrderStatuses.cancelled).toList();
 
         return DefaultTabController(
           length: 4,
@@ -817,7 +836,7 @@ class _OrdersTabState extends State<_OrdersTab> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                 child: TextField(
-                  onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
+                  onChanged: _onSearchChanged,
                   decoration: const InputDecoration(
                     labelText: 'Search Orders',
                     prefixIcon: Icon(Icons.search),
@@ -1045,6 +1064,108 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
                 }
               },
               child: const Text(ButtonTexts.verifyHandover),
+            ),
+          ],
+        );
+      },
+    );
+
+    return confirmed ?? false;
+  }
+
+  Future<bool> _showAssignDeliveryPersonDialog(BuildContext context) async {
+    final formKey = GlobalKey<FormState>();
+    final nameCtrl = TextEditingController(text: _deliveryNameController.text);
+    final phoneCtrl = TextEditingController(text: _deliveryPhoneController.text);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Assign Delivery Partner', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Please enter delivery partner details before marking this order as Out for Delivery.',
+                  style: TextStyle(fontSize: 13, color: AppColors.muted),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: nameCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Partner Name',
+                    prefixIcon: Icon(Icons.person_outline),
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter partner name' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  maxLength: 10,
+                  decoration: const InputDecoration(
+                    labelText: 'Partner Phone',
+                    prefixIcon: Icon(Icons.phone_outlined),
+                    counterText: '',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Enter phone number';
+                    final cleaned = v.replaceAll(RegExp(r'[^0-9]'), '');
+                    if (!RegExp(r'^[6-9]\d{9}$').hasMatch(cleaned)) {
+                      return 'Enter valid 10-digit mobile number';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text(ButtonTexts.cancel),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (formKey.currentState!.validate()) {
+                  final name = nameCtrl.text.trim();
+                  final phone = phoneCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+                  await widget.firestore.assignDeliveryPerson(
+                    orderId: widget.order.id,
+                    deliveryPersonName: name,
+                    deliveryPersonPhone: phone,
+                  );
+                  _deliveryNameController.text = name;
+                  _deliveryPhoneController.text = phone;
+
+                  final customerId = widget.order.customerId;
+                  if (customerId.isNotEmpty) {
+                    final partnerBody = '$name has been assigned to deliver your order #${widget.order.orderNumber}.';
+                    await widget.firestore.createNotification(
+                      userId: customerId,
+                      title: 'Delivery Partner Assigned',
+                      body: partnerBody,
+                      orderId: widget.order.id,
+                    );
+                  }
+
+                  if (context.mounted) {
+                    Navigator.pop(context, true);
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Assign & Proceed'),
             ),
           ],
         );
@@ -1673,13 +1794,27 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
                       }).toList(),
                       onChanged: (status) async {
                         if (status == null) return;
-                        if (status == OrderStatuses.delivered) {
+                        final normalized = OrderStatuses.normalize(status);
+                        if (normalized == OrderStatuses.delivered) {
                           final verified = await _showVerificationDialog(context, widget.order);
                           if (!verified) {
                             setState(() {
                               _currentStatus = widget.order.status;
                             });
                             return;
+                          }
+                        } else if (normalized == OrderStatuses.outForDelivery) {
+                          final hasDeliveryPerson = (widget.order.deliveryPersonName != null &&
+                                  widget.order.deliveryPersonName!.trim().isNotEmpty) ||
+                              _deliveryNameController.text.trim().isNotEmpty;
+                          if (!hasDeliveryPerson) {
+                            final assigned = await _showAssignDeliveryPersonDialog(context);
+                            if (!assigned) {
+                              setState(() {
+                                _currentStatus = widget.order.status;
+                              });
+                              return;
+                            }
                           }
                         }
                         widget.onChangeStatus(status);
@@ -1708,6 +1843,17 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
         deliveryPersonName: name,
         deliveryPersonPhone: phone,
       );
+
+      final customerId = widget.order.customerId;
+      if (customerId.isNotEmpty) {
+        final partnerBody = '$name has been assigned to deliver your order #${widget.order.orderNumber}.';
+        await widget.firestore.createNotification(
+          userId: customerId,
+          title: 'Delivery Partner Assigned',
+          body: partnerBody,
+          orderId: widget.order.id,
+        );
+      }
 
       setState(() {
         _isEditingDeliveryPerson = false;
@@ -1998,29 +2144,28 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
   Widget _buildStatusBadge(String status) {
     Color color;
     Color textColor;
-    switch (status.toLowerCase()) {
-      case 'pending':
+    switch (OrderStatuses.normalize(status)) {
+      case OrderStatuses.orderPlaced:
         color = Colors.amber.shade100;
         textColor = Colors.amber.shade900;
         break;
-      case 'confirmed':
+      case OrderStatuses.accepted:
         color = Colors.blue.shade100;
         textColor = Colors.blue.shade900;
         break;
-      case 'packed':
+      case OrderStatuses.packing:
         color = Colors.purple.shade100;
         textColor = Colors.purple.shade900;
         break;
-      case 'out_for_delivery':
-      case 'out for delivery':
+      case OrderStatuses.outForDelivery:
         color = Colors.cyan.shade100;
         textColor = Colors.cyan.shade900;
         break;
-      case 'delivered':
+      case OrderStatuses.delivered:
         color = Colors.green.shade100;
         textColor = Colors.green.shade900;
         break;
-      case 'cancelled':
+      case OrderStatuses.cancelled:
         color = Colors.red.shade100;
         textColor = Colors.red.shade900;
         break;
@@ -2036,7 +2181,7 @@ class OrderDetailsCardState extends State<OrderDetailsCard> {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        status.toUpperCase(),
+        OrderStatuses.display(status).toUpperCase(),
         style: TextStyle(
           color: textColor,
           fontWeight: FontWeight.bold,
@@ -2065,6 +2210,8 @@ class _ProductsTab extends StatefulWidget {
 class _ProductsTabState extends State<_ProductsTab> {
   final bool _isLoadingMore = false;
   String _searchQuery = '';
+  final _searchController = TextEditingController();
+  Timer? _searchDebounce;
   final _nameController = TextEditingController();
   final _imageUrlController = TextEditingController();
   final _priceController = TextEditingController();
@@ -2090,9 +2237,19 @@ class _ProductsTabState extends State<_ProductsTab> {
   final Set<String> _selectedProductIds = {};
   bool _showSearchBar = false;
 
+  List<ProductModel> _allProducts = [];
+  bool _isLoading = false;
+
   @override
   void initState() {
     super.initState();
+    final cached = ProductRepository.instance.getCachedProducts(includeInactive: true);
+    if (cached.isNotEmpty) {
+      _allProducts = cached;
+      debugPrint('[PRODUCT] initial load SUCCESS (from cache, count: ${_allProducts.length})');
+    } else {
+      _loadProducts();
+    }
     _scrollController.addListener(() {
       if (_scrollController.hasClients) {
         if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
@@ -2104,8 +2261,43 @@ class _ProductsTabState extends State<_ProductsTab> {
     });
   }
 
+  Future<void> _loadProducts() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      final items = await ProductRepository.instance.loadInitialProducts(includeInactive: true);
+      if (mounted) {
+        setState(() {
+          _allProducts = items;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _refreshProducts() async {
+    try {
+      final refreshed = await ProductRepository.instance.refreshProducts(includeInactive: true);
+      if (mounted) {
+        setState(() {
+          _allProducts = refreshed;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to refresh products: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     _nameController.dispose();
     _imageUrlController.dispose();
     _priceController.dispose();
@@ -2142,7 +2334,7 @@ class _ProductsTabState extends State<_ProductsTab> {
       ),
     ).then((result) {
       if (result == true) {
-        setState(() {});
+        _loadProducts();
       }
     });
   }
@@ -3383,7 +3575,11 @@ class _ProductsTabState extends State<_ProductsTab> {
     );
     if (confirmed == true) {
       await widget.firestore.deleteProduct(product.id);
+      ProductRepository.instance.removeCachedProduct(product.id);
       if (mounted) {
+        setState(() {
+          _allProducts.removeWhere((item) => item.id == product.id);
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Product "${product.name}" deleted.'), backgroundColor: Colors.orange),
         );
@@ -3522,14 +3718,11 @@ class _ProductsTabState extends State<_ProductsTab> {
     }
 
     if (_searchQuery.isNotEmpty) {
-      filtered = filtered.where((p) {
-        final matchesName = p.name.toLowerCase().contains(_searchQuery) || p.nameTamil.toLowerCase().contains(_searchQuery);
-        final matchesBrand = p.brand.toLowerCase().contains(_searchQuery);
-        final matchesBarcode = p.variantsEnabled
-            ? p.variants.any((v) => v.barcode.contains(_searchQuery))
-            : false;
-        return matchesName || matchesBrand || matchesBarcode;
-      }).toList();
+      filtered = ProductSearchEngine.filterProducts(
+        products: filtered,
+        rawQuery: _searchQuery,
+        includeInactive: true,
+      );
     }
 
     return filtered;
@@ -3645,6 +3838,7 @@ class _ProductsTabState extends State<_ProductsTab> {
         final batch = db.batch();
         for (final id in _selectedProductIds) {
           batch.delete(db.collection('products').doc(id));
+          ProductRepository.instance.removeCachedProduct(id);
         }
         await batch.commit();
 
@@ -3654,6 +3848,7 @@ class _ProductsTabState extends State<_ProductsTab> {
             SnackBar(content: Text('$count products deleted successfully.'), backgroundColor: Colors.green),
           );
           setState(() {
+            _allProducts.removeWhere((p) => _selectedProductIds.contains(p.id));
             _isMultiSelectMode = false;
             _selectedProductIds.clear();
           });
@@ -3667,15 +3862,13 @@ class _ProductsTabState extends State<_ProductsTab> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<ProductModel>>(
-      stream: widget.firestore.productsStream(includeInactive: true),
-      builder: (context, snapshot) {
-        final allProducts = snapshot.data ?? [];
-        final filteredProducts = _applyFiltersAndSearch(allProducts);
-        
-        final displayedProducts = filteredProducts.take(_displayLimit).toList();
+    debugPrint('[PRODUCT] widget rebuild: Admin _ProductsTab');
+    final allProducts = _allProducts;
+    final filteredProducts = _applyFiltersAndSearch(allProducts);
 
-        return Scaffold(
+    final displayedProducts = filteredProducts.take(_displayLimit).toList();
+
+    return Scaffold(
           backgroundColor: Colors.white,
           appBar: AppBar(
             backgroundColor: Colors.white,
@@ -3730,6 +3923,11 @@ class _ProductsTabState extends State<_ProductsTab> {
                       onPressed: () {
                         setState(() {
                           _showSearchBar = !_showSearchBar;
+                          if (!_showSearchBar) {
+                            _searchDebounce?.cancel();
+                            _searchController.clear();
+                            _searchQuery = '';
+                          }
                         });
                       },
                     ),
@@ -3787,15 +3985,37 @@ class _ProductsTabState extends State<_ProductsTab> {
                       borderRadius: BorderRadius.circular(28),
                     ),
                     child: TextField(
-                      onChanged: (val) => setState(() {
-                        _searchQuery = val.trim().toLowerCase();
-                        _displayLimit = 20; // reset scroll limit on new search
-                      }),
-                      decoration: const InputDecoration(
+                      controller: _searchController,
+                      onChanged: (val) {
+                        if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
+                        _searchDebounce = Timer(const Duration(milliseconds: 150), () {
+                          if (mounted) {
+                            setState(() {
+                              _searchQuery = val;
+                              _displayLimit = 20; // reset scroll limit on new search
+                            });
+                          }
+                        });
+                        setState(() {}); // refresh for clear icon visibility
+                      },
+                      decoration: InputDecoration(
                         hintText: 'Search by product name, barcode or brand...',
-                        prefixIcon: Icon(Icons.search, color: Colors.grey),
+                        prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, color: Colors.grey, size: 20),
+                                onPressed: () {
+                                  if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
+                                  _searchController.clear();
+                                  setState(() {
+                                    _searchQuery = '';
+                                    _displayLimit = 20;
+                                  });
+                                },
+                              )
+                            : null,
                         border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                       ),
                     ),
                   ),
@@ -3865,13 +4085,15 @@ class _ProductsTabState extends State<_ProductsTab> {
 
               // Main Products List
               Expanded(
-                child: snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData
+                child: _isLoading && _allProducts.isEmpty
                     ? (!ConnectivityProvider.instance.isOnline
                         ? OfflinePlaceholderWidget(
-                            onRetrySuccess: () {},
+                            onRetrySuccess: _loadProducts,
                           )
                         : const LoadingWidget())
-                    : filteredProducts.isEmpty
+                    : RefreshIndicator(
+                        onRefresh: _refreshProducts,
+                        child: filteredProducts.isEmpty
                         ? Center(
                             child: SingleChildScrollView(
                               padding: const EdgeInsets.all(24),
@@ -4224,7 +4446,13 @@ class _ProductsTabState extends State<_ProductsTab> {
                                                         SnackBar(content: Text('Printing barcode for "${product.name}"...')),
                                                       );
                                                     } else if (val == 'disable') {
-                                                      widget.firestore.updateProduct(product.copyWith(isActive: !product.isActive));
+                                                       final updated = product.copyWith(isActive: !product.isActive);
+                                                       widget.firestore.updateProduct(updated);
+                                                       ProductRepository.instance.updateCachedProduct(updated);
+                                                       setState(() {
+                                                         final idx = _allProducts.indexWhere((p) => p.id == product.id);
+                                                         if (idx >= 0) _allProducts[idx] = updated;
+                                                       });
                                                     } else if (val == 'delete') {
                                                       _deleteProductWithConfirmation(product);
                                                     }
@@ -4250,6 +4478,7 @@ class _ProductsTabState extends State<_ProductsTab> {
                               );
                             },
                           ),
+                      ),
               ),
             ],
           ),
@@ -4283,8 +4512,6 @@ class _ProductsTabState extends State<_ProductsTab> {
                 )
               : null,
         );
-      },
-    );
   }
 
   Widget _buildFilterChip(String filterId, String label, IconData icon, {Color? badgeColor}) {
@@ -4935,18 +5162,15 @@ class _CategoriesTabState extends State<_CategoriesTab> with AutomaticKeepAliveC
           return c.name.toLowerCase().contains(_searchQuery);
         }).toList();
 
-        return StreamBuilder<List<ProductModel>>(
-          stream: widget.firestore.productsStream(),
-          builder: (context, prodSnapshot) {
-            final products = prodSnapshot.data ?? [];
+        final products = ProductRepository.instance.getCachedProducts(includeInactive: true);
 
-            // Map product count per category
-            final Map<String, int> productCounts = {};
-            for (final p in products) {
-              if (p.categoryId.isNotEmpty) {
-                productCounts[p.categoryId] = (productCounts[p.categoryId] ?? 0) + 1;
-              }
-            }
+        // Map product count per category
+        final Map<String, int> productCounts = {};
+        for (final p in products) {
+          if (p.categoryId.isNotEmpty) {
+            productCounts[p.categoryId] = (productCounts[p.categoryId] ?? 0) + 1;
+          }
+        }
 
             return Column(
               children: [
@@ -5015,8 +5239,6 @@ class _CategoriesTabState extends State<_CategoriesTab> with AutomaticKeepAliveC
                 ),
               ],
             );
-          },
-        );
       },
     );
   }

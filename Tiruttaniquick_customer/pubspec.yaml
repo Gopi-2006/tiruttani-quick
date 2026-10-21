@@ -1,7 +1,7 @@
 name: tiruttaniquick_customer
 description: "Thiruttani Quick - Grocery Delivery Customer App"
 publish_to: 'none'
-version: 1.0.11+18
+version: 1.0.12+19
 environment:
   sdk: ">=3.0.0 <4.0.0"
 
@@ -32,6 +32,7 @@ dependencies:
   sendotp_flutter_sdk: ^0.0.2
   flutter_dotenv: ^5.2.1
   flutter_blurhash: ^0.9.1
+  http: ^1.2.0
 
 
 dev_dependencies:

@@ -1,0 +1,16 @@
+node_modules/
+data/
+data/*.sqlite*
+data/test_*
+.git/
+.github/
+.vscode/
+.idea/
+*.log
+npm-debug.log*
+.env
+.env.*
+!.env.example
+coverage/
+docs/
+scratch/

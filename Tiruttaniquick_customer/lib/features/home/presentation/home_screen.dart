@@ -3,7 +3,6 @@ import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../services/settings_provider.dart';
 import '../../../widgets/banner_ad_widget.dart';
 import '../../../config/admob_config.dart';
@@ -14,14 +13,14 @@ import '../../../services/native_ad_manager.dart';
 
 import '../../../services/current_user_provider.dart';
 import '../../../services/startup_provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
-import '../../cart/presentation/cart_provider.dart';
 import '../../cart/presentation/cart_screen.dart';
+import '../../cart/presentation/cart_provider.dart';
 import '../../orders/presentation/my_orders_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../../core/widgets/skeleton_loader.dart';
 import '../../../core/widgets/voice_search_dialog.dart';
+import 'widgets/banner_carousel.dart';
 
 class HomeScreen extends StatefulWidget {
   final int initialTab;
@@ -68,6 +67,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cartProvider = context.watch<CartProvider>();
+    final cartCount = cartProvider.itemCount;
+
     return Scaffold(
       extendBody: true,
       body: NotificationListener<ScrollNotification>(
@@ -96,30 +98,44 @@ class _HomeScreenState extends State<HomeScreen> {
               _isNavVisible = true;
             });
           },
-          destinations: const [
-            NavigationDestination(
+          destinations: [
+            const NavigationDestination(
               icon: Icon(Icons.home_outlined),
               selectedIcon: Icon(Icons.home),
               label: 'Home',
             ),
-            NavigationDestination(
+            const NavigationDestination(
               icon: Icon(Icons.grid_view_outlined),
               selectedIcon: Icon(Icons.grid_view),
               label: 'Categories',
             ),
-            NavigationDestination(
+            const NavigationDestination(
               icon: Icon(Icons.star_outline),
               selectedIcon: Icon(Icons.star),
               label: 'Top Picks',
             ),
-            NavigationDestination(
+            const NavigationDestination(
               icon: Icon(Icons.receipt_long_outlined),
               selectedIcon: Icon(Icons.receipt_long),
               label: 'Orders',
             ),
             NavigationDestination(
-              icon: Icon(Icons.shopping_cart_outlined),
-              selectedIcon: Icon(Icons.shopping_cart),
+              icon: cartCount > 0
+                  ? Badge(
+                      label: Text('$cartCount'),
+                      backgroundColor: AppColors.primary,
+                      textColor: Colors.white,
+                      child: const Icon(Icons.shopping_cart_outlined),
+                    )
+                  : const Icon(Icons.shopping_cart_outlined),
+              selectedIcon: cartCount > 0
+                  ? Badge(
+                      label: Text('$cartCount'),
+                      backgroundColor: AppColors.primary,
+                      textColor: Colors.white,
+                      child: const Icon(Icons.shopping_cart),
+                    )
+                  : const Icon(Icons.shopping_cart),
               label: 'Cart',
             ),
           ],
@@ -127,6 +143,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
 }
 
 class _HomeBody extends StatefulWidget {
@@ -140,13 +157,23 @@ class _HomeBodyState extends State<_HomeBody> {
   Timer? _debounceTimer;
   final _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  String _lastSyncedQuery = '';
+  // Cached stream — created once in initState so every home rebuild
+  // doesn't open a new Firestore listener for shop settings.
+  late final Stream<ShopSettingsModel> _shopSettingsStream;
 
   @override
   void initState() {
     super.initState();
+    _shopSettingsStream = FirestoreService().shopSettingsStream();
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       NativeAdManager.instance.preloadAd();
+      if (ProductRepository.instance.getCachedProducts().isEmpty) {
+        ProductRepository.instance.loadInitialProducts().then((_) {
+          if (mounted) setState(() {});
+        });
+      }
     });
   }
 
@@ -170,16 +197,18 @@ class _HomeBodyState extends State<_HomeBody> {
 
   void _onSearchChanged(String value, HomeSearchProvider provider) {
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 400), () {
+    _debounceTimer = Timer(const Duration(milliseconds: 150), () {
+      _lastSyncedQuery = value;
       provider.query = value;
     });
   }
 
   Future<void> _refreshHomeData() async {
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (mounted) {
-      setState(() {});
-    }
+    // Actually refresh the product catalog from Firestore (not just a fake setState).
+    try {
+      await ProductRepository.instance.refreshProducts();
+    } catch (_) {}
+    if (mounted) setState(() {});
   }
 
   void _showFilterBottomSheet(BuildContext context) {
@@ -291,15 +320,15 @@ class _HomeBodyState extends State<_HomeBody> {
               ),
               const SizedBox(height: 12),
               Text(
-                searchQuery.isNotEmpty
-                    ? 'No products found for "$searchQuery"'
+                searchQuery.trim().isNotEmpty
+                    ? 'No products found for "${searchQuery.trim()}"'
                     : 'No products available right now.',
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.text),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 6),
               Text(
-                searchQuery.isNotEmpty
+                searchQuery.trim().isNotEmpty
                     ? 'Try searching by a different name, category, or Tamil name.'
                     : 'Please check back soon.',
                 style: const TextStyle(fontSize: 13, color: AppColors.muted),
@@ -338,11 +367,6 @@ class _HomeBodyState extends State<_HomeBody> {
           },
         ),
       );
-
-      // Show Native Ad after every chunk of 20 products
-      if (end % productsPerChunk == 0) {
-        gridItems.add(NativeAdCard(key: ValueKey('home_native_ad_$end')));
-      }
     }
 
     return Column(
@@ -364,9 +388,24 @@ class _HomeBodyState extends State<_HomeBody> {
     final searchProvider = context.watch<HomeSearchProvider>();
     final startup = context.watch<StartupProvider>();
 
-    if (_searchController.text != searchProvider.query && searchProvider.query.isEmpty) {
-      _searchController.text = searchProvider.query;
+    // Sync text controller ONLY if provider query changed externally (e.g. voice search, banner click)
+    if (searchProvider.query != _lastSyncedQuery) {
+      _lastSyncedQuery = searchProvider.query;
+      if (_searchController.text != searchProvider.query) {
+        _searchController.text = searchProvider.query;
+      }
     }
+
+    final cachedCatalog = ProductRepository.instance.getCachedProducts();
+    final allProducts = cachedCatalog.isNotEmpty ? cachedCatalog : startup.products;
+
+    final List<ProductModel> searchResults = searchProvider.query.isNotEmpty
+        ? ProductSearchEngine.filterProducts(
+            products: allProducts,
+            rawQuery: searchProvider.query,
+            categories: startup.categories,
+          )
+        : <ProductModel>[];
 
     return Scaffold(
       appBar: AppBar(
@@ -415,11 +454,7 @@ class _HomeBodyState extends State<_HomeBody> {
                   ? _buildHomeContent(
                       context,
                       false,
-                      ProductSearchEngine.filterProducts(
-                        products: startup.products,
-                        rawQuery: searchProvider.query,
-                        categories: startup.categories,
-                      ),
+                      searchResults,
                       isSearch: true,
                       categories: startup.categories,
                     )
@@ -466,28 +501,46 @@ class _HomeBodyState extends State<_HomeBody> {
                     ),
                     child: TextField(
                       controller: _searchController,
-                      onChanged: (value) => _onSearchChanged(value, searchProvider),
+                      onChanged: (value) {
+                        _onSearchChanged(value, searchProvider);
+                        setState(() {});
+                      },
                       onSubmitted: (value) {
                         if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+                        _lastSyncedQuery = value;
                         searchProvider.query = value;
+                        setState(() {});
                       },
                       decoration: InputDecoration(
                         hintText: context.translate('searchPlaceholder'),
                         hintStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
                         prefixIcon: const Icon(AppIcons.search, color: AppColors.textSecondary, size: 20),
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.mic, color: AppColors.primary, size: 20),
-                          onPressed: () async {
-                            final query = await showDialog<String>(
-                              context: context,
-                              builder: (context) => const VoiceSearchDialog(),
-                            );
-                            if (query != null && query.isNotEmpty) {
-                              _searchController.text = query;
-                              searchProvider.query = query;
-                            }
-                          },
-                        ),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, color: AppColors.textSecondary, size: 20),
+                                onPressed: () {
+                                  if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+                                  _searchController.clear();
+                                  _lastSyncedQuery = '';
+                                  searchProvider.query = '';
+                                  setState(() {});
+                                },
+                              )
+                            : IconButton(
+                                icon: const Icon(Icons.mic, color: AppColors.primary, size: 20),
+                                onPressed: () async {
+                                  final query = await showDialog<String>(
+                                    context: context,
+                                    builder: (context) => const VoiceSearchDialog(),
+                                  );
+                                  if (query != null && query.isNotEmpty) {
+                                    _searchController.text = query;
+                                    _lastSyncedQuery = query;
+                                    searchProvider.query = query;
+                                    setState(() {});
+                                  }
+                                },
+                              ),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         focusedBorder: InputBorder.none,
@@ -514,50 +567,82 @@ class _HomeBodyState extends State<_HomeBody> {
           ),
           const SizedBox(height: AppDimensions.spacingNormal),
 
-          // Shop by Category in the top
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: AppDimensions.paddingMedium),
-            child: Text(
-              'Shop by Category',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.text),
+          if (isSearch) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingMedium),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Search Results (${products.length})',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.text),
+                  ),
+                  if (products.isNotEmpty)
+                    const Text(
+                      'Best Matches',
+                      style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600),
+                    ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: AppDimensions.spacingSmall),
-          _buildCategoriesSection(categories),
-          const SizedBox(height: AppDimensions.spacingNormal),
-
-          // Auto-sliding Banner Carousel
-          const BannerCarousel(),
-          const SizedBox(height: AppDimensions.spacingMedium),
-
-          // Top Picks Horizontal scrolling
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: AppDimensions.paddingMedium),
-            child: Text(
-              'Top Picks for You',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.text),
+            const SizedBox(height: AppDimensions.spacingSmall),
+            _buildBestSellersSection(
+              loading,
+              products,
+              isLoadingMore: false,
+              searchQuery: searchProvider.query,
             ),
-          ),
-          const SizedBox(height: AppDimensions.spacingSmall),
-          _buildTopPicksSection(loading, products),
-          const SizedBox(height: AppDimensions.spacingLarge),
+            const SizedBox(height: AppDimensions.spacingLarge),
+          ] else ...[
+            // Promotional Banner Carousel (Directly below search bar, above categories)
+            const BannerCarousel(),
+            const SizedBox(height: AppDimensions.spacingMedium),
 
-          // Best Sellers 2-column grid
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingMedium),
-            child: Text(
-              isSearch ? 'Search Results' : 'Best Sellers',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.text),
+            // Shop by Category in the top
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: AppDimensions.paddingMedium),
+              child: Text(
+                'Shop by Category',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.text),
+              ),
             ),
-          ),
-          const SizedBox(height: AppDimensions.spacingNormal),
-          _buildBestSellersSection(
-            loading,
-            products,
-            isLoadingMore: !isSearch && startup.isLoadingMore,
-            searchQuery: isSearch ? searchProvider.query : '',
-          ),
-          const SizedBox(height: AppDimensions.spacingLarge),
+            const SizedBox(height: AppDimensions.spacingSmall),
+            _buildCategoriesSection(categories),
+            const SizedBox(height: AppDimensions.spacingMedium),
+
+            // Top Picks Horizontal scrolling
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: AppDimensions.paddingMedium),
+              child: Text(
+                'Top Picks for You',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.text),
+              ),
+            ),
+            const SizedBox(height: AppDimensions.spacingSmall),
+            _buildTopPicksSection(loading, products),
+            const SizedBox(height: AppDimensions.spacingLarge),
+
+            // Dedicated Sponsored Ad Slot (kept separate from product picks)
+            _buildSponsoredAdSlot(),
+            const SizedBox(height: AppDimensions.spacingLarge),
+
+            // Best Sellers 2-column grid
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: AppDimensions.paddingMedium),
+              child: Text(
+                'Best Sellers',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.text),
+              ),
+            ),
+            const SizedBox(height: AppDimensions.spacingNormal),
+            _buildBestSellersSection(
+              loading,
+              products,
+              isLoadingMore: startup.isLoadingMore,
+              searchQuery: '',
+            ),
+            const SizedBox(height: AppDimensions.spacingLarge),
+          ],
         ],
       ),
     );
@@ -565,7 +650,7 @@ class _HomeBodyState extends State<_HomeBody> {
 
   Widget _buildDeliveryAvailabilityBanner() {
     return StreamBuilder<ShopSettingsModel>(
-      stream: FirestoreService().shopSettingsStream(),
+      stream: _shopSettingsStream,
       builder: (context, snapshot) {
         final settings = snapshot.data ?? const ShopSettingsModel();
         if (settings.deliveryAvailable) {
@@ -620,10 +705,43 @@ class _HomeBodyState extends State<_HomeBody> {
     );
   }
 
+  Widget _buildSponsoredAdSlot() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingMedium),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'Sponsored',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.muted,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        const NativeAdCard(key: ValueKey('home_sponsored_ad_slot')),
+      ],
+    );
+  }
+
   Widget _buildCategoriesSection(List<CategoryModel> categories) {
     if (categories.isEmpty) {
       return SizedBox(
-        height: 110,
+        height: 148,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingMedium),
@@ -635,7 +753,7 @@ class _HomeBodyState extends State<_HomeBody> {
     }
 
     return SizedBox(
-      height: 110,
+      height: 148,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingMedium),
@@ -646,376 +764,12 @@ class _HomeBodyState extends State<_HomeBody> {
           return CategoryCard(
             title: category.name,
             categoryImage: category.imageUrl,
-            onTap: () => context.push('/products/${category.id}?name=${Uri.encodeComponent(category.name)}'),
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              context.push('/products/${category.id}?name=${Uri.encodeComponent(category.name)}');
+            },
           );
         },
-      ),
-    );
-  }
-}
-
-class BannerCarousel extends StatefulWidget {
-  const BannerCarousel({super.key});
-
-  @override
-  State<BannerCarousel> createState() => _BannerCarouselState();
-}
-
-class _BannerCarouselState extends State<BannerCarousel> {
-  late PageController _pageController;
-  int _currentPage = 0;
-  Timer? _timer;
-  int _bannerCount = 0;
-  final Set<String> _recordedBannerViews = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController(initialPage: 0);
-  }
-
-  void _startTimer() {
-    _timer?.cancel();
-    if (_bannerCount > 1) {
-      _timer = Timer.periodic(const Duration(seconds: 4), (timer) {
-        if (mounted) {
-          setState(() {
-            _currentPage++;
-            _pageController.animateToPage(
-              _currentPage,
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeInOut,
-            );
-          });
-        }
-      });
-    }
-  }
-
-  void _recordViewIfNeeded(List<BannerModel> activeBanners, int index) {
-    if (activeBanners.isEmpty) return;
-    final banner = activeBanners[index % activeBanners.length];
-    if (!_recordedBannerViews.contains(banner.id)) {
-      _recordedBannerViews.add(banner.id);
-      FirestoreService().recordBannerView(banner.id);
-    }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final startup = context.watch<StartupProvider>();
-    final activeBanners = startup.banners.where((b) => b.isCurrentlyActive).toList();
-    if (activeBanners.length != _bannerCount) {
-      _bannerCount = activeBanners.length;
-      _currentPage = _bannerCount > 1 ? _bannerCount * 500 : 0;
-      _pageController.dispose();
-      _pageController = PageController(initialPage: _currentPage);
-      _startTimer();
-      if (activeBanners.isNotEmpty) {
-        _recordViewIfNeeded(activeBanners, _currentPage);
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final startup = context.watch<StartupProvider>();
-    final activeBanners = startup.banners.where((b) => b.isCurrentlyActive).toList();
-
-    if (activeBanners.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final int actualCount = activeBanners.length;
-    final int virtualCount = actualCount > 1 ? actualCount * 1000 : 1;
-
-    return Column(
-      children: [
-        SizedBox(
-          height: 145,
-          child: PageView.builder(
-            controller: _pageController,
-            itemCount: virtualCount,
-            onPageChanged: (index) {
-              setState(() {
-                _currentPage = index;
-              });
-              _recordViewIfNeeded(activeBanners, index);
-            },
-            itemBuilder: (context, index) {
-              final banner = activeBanners[index % actualCount];
-              return Hero(
-                tag: 'banner_image_${banner.id}',
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => _handleBannerTap(banner),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            CachedNetworkImage(
-                              imageUrl: banner.imageUrl,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => Container(
-                                color: Colors.grey.shade100,
-                                child: const Center(
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
-                                ),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                decoration: const BoxDecoration(
-                                  gradient: LinearGradient(colors: [Color(0xFF15803D), Color(0xFF22C55E)]),
-                                ),
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      banner.title,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    if (banner.subtitle.isNotEmpty) ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        banner.subtitle,
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ),
-                            // Gradient overlay for readability if texts exist
-                            if (banner.title.isNotEmpty || banner.subtitle.isNotEmpty)
-                              Positioned(
-                                bottom: 0,
-                                left: 0,
-                                right: 0,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.bottomCenter,
-                                      end: Alignment.topCenter,
-                                      colors: [
-                                        Colors.black.withValues(alpha: 0.6),
-                                        Colors.transparent,
-                                      ],
-                                    ),
-                                  ),
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        banner.title,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15,
-                                        ),
-                                      ),
-                                      if (banner.subtitle.isNotEmpty) ...[
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          banner.subtitle,
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            // Countdown Timer (if enabled)
-                            if (banner.countdownEnabled)
-                              Positioned(
-                                top: 12,
-                                right: 12,
-                                child: BannerCountdownWidget(endDateTime: banner.endDateTime),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        if (actualCount > 1) ...[
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(actualCount, (idx) {
-              final isSelected = (_currentPage % actualCount) == idx;
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                width: isSelected ? 12 : 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: isSelected ? AppColors.primary : Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              );
-            }),
-          ),
-        ],
-      ],
-    );
-  }
-
-  void _handleBannerTap(BannerModel banner) async {
-    // 1. Record analytics click
-    await FirestoreService().recordBannerClick(banner.id);
-
-    // 2. Set clicked banner in cart provider for conversion attribution
-    if (mounted) {
-      context.read<CartProvider>().bannerIdClicked = banner.id;
-    }
-
-    // 3. Perform click action navigation
-    final destination = banner.actionType;
-    final target = banner.actionTarget;
-
-    if (!mounted) return;
-
-    switch (destination) {
-      case 'Open Product':
-        context.push('/product/$target');
-        break;
-      case 'Open Category':
-        context.push('/products/$target?name=${Uri.encodeComponent(banner.title)}');
-        break;
-      case 'Open Brand':
-        final searchProvider = context.read<HomeSearchProvider>();
-        searchProvider.query = target;
-        break;
-      case 'Open Offer Page':
-        context.push('/offer/${banner.id}?title=${Uri.encodeComponent(banner.title)}');
-        break;
-      case 'Open Collection':
-        final searchProvider = context.read<HomeSearchProvider>();
-        searchProvider.query = target;
-        break;
-      case 'Open Search':
-        final searchProvider = context.read<HomeSearchProvider>();
-        searchProvider.query = target;
-        break;
-      case 'External URL':
-        final uri = Uri.tryParse(target);
-        if (uri != null && await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        }
-        break;
-      case 'No Action':
-      default:
-        break;
-    }
-  }
-}
-
-class BannerCountdownWidget extends StatefulWidget {
-  final DateTime endDateTime;
-  const BannerCountdownWidget({super.key, required this.endDateTime});
-
-  @override
-  State<BannerCountdownWidget> createState() => _BannerCountdownWidgetState();
-}
-
-class _BannerCountdownWidgetState extends State<BannerCountdownWidget> {
-  late Timer _timer;
-  late Duration _timeLeft;
-
-  @override
-  void initState() {
-    super.initState();
-    _calculateTimeLeft();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          _calculateTimeLeft();
-        });
-      }
-    });
-  }
-
-  void _calculateTimeLeft() {
-    _timeLeft = widget.endDateTime.difference(DateTime.now());
-  }
-
-  @override
-  void dispose() {
-    _timer.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_timeLeft.isNegative) {
-      return const SizedBox.shrink();
-    }
-
-    final hours = _timeLeft.inHours.toString().padLeft(2, '0');
-    final minutes = (_timeLeft.inMinutes % 60).toString().padLeft(2, '0');
-    final seconds = (_timeLeft.inSeconds % 60).toString().padLeft(2, '0');
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.65),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white24, width: 0.5),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.timer_outlined, color: Colors.orangeAccent, size: 13),
-          const SizedBox(width: 4),
-          Text(
-            'Ends in $hours:$minutes:$seconds',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              fontFamily: 'Courier', // Monospace font for stable digit sizing
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1026,85 +780,134 @@ class CategoriesTabScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final firestore = context.read<FirestoreService>();
+    final startup = context.watch<StartupProvider>();
+    final categories = startup.categories;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('All Categories', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
-      body: StreamBuilder<List<CategoryModel>>(
-        stream: firestore.categoriesStream(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData) {
-            if (!ConnectivityProvider.instance.isOnline) {
-              return const OfflinePlaceholderWidget();
-            }
-            return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-          }
-          final categories = snapshot.data ?? [];
-          return GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 16,
-              childAspectRatio: 0.8,
+      body: categories.isEmpty
+          ? (!ConnectivityProvider.instance.isOnline
+              ? const OfflinePlaceholderWidget()
+              : const Center(child: CircularProgressIndicator(color: AppColors.primary)))
+          : GridView.builder(
+              padding: const EdgeInsets.all(16),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 16,
+                childAspectRatio: 0.72,
+              ),
+              itemCount: categories.length,
+              itemBuilder: (context, index) {
+                final category = categories[index];
+                return CategoryCard(
+                  title: category.name,
+                  categoryImage: category.imageUrl,
+                  onTap: () {
+                    FocusScope.of(context).unfocus();
+                    context.push('/products/${category.id}?name=${Uri.encodeComponent(category.name)}');
+                  },
+                );
+              },
             ),
-            itemCount: categories.length,
-            itemBuilder: (context, index) {
-              final category = categories[index];
-              return CategoryCard(
-                title: category.name,
-                categoryImage: category.imageUrl,
-                onTap: () => context.push('/products/${category.id}?name=${Uri.encodeComponent(category.name)}'),
-              );
-            },
-          );
-        },
-      ),
     );
   }
 }
 
-class TopPicksTabScreen extends StatelessWidget {
+class TopPicksTabScreen extends StatefulWidget {
   const TopPicksTabScreen({super.key});
 
   @override
+  State<TopPicksTabScreen> createState() => _TopPicksTabScreenState();
+}
+
+class _TopPicksTabScreenState extends State<TopPicksTabScreen> {
+  List<ProductModel> _products = [];
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final cached = ProductRepository.instance.getCachedProducts();
+    if (cached.isNotEmpty) {
+      _products = cached;
+    } else {
+      _loadTopPicks();
+    }
+  }
+
+  Future<void> _loadTopPicks() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      final items = await ProductRepository.instance.loadInitialProducts();
+      if (mounted) {
+        setState(() {
+          _products = items;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _refreshTopPicks() async {
+    try {
+      final refreshed = await ProductRepository.instance.refreshProducts();
+      if (mounted) {
+        setState(() => _products = refreshed);
+      }
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final firestore = context.read<FirestoreService>();
+    debugPrint('[PRODUCT] widget rebuild: TopPicksTabScreen');
+
+    final topPicks = _products.where((product) => product.mrp > product.price).toList();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Top Picks for You', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
-      body: StreamBuilder<List<ProductModel>>(
-        stream: firestore.productsStream(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-          }
-          // Filter products that have a discount (mrp > price)
-          final topPicks = (snapshot.data ?? [])
-              .where((product) => product.mrp > product.price)
-              .toList();
-
-          if (topPicks.isEmpty) {
-            return const Center(child: Text('No top picks available right now.'));
-          }
-
-          return GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 0.58,
-            ),
-            itemCount: topPicks.length,
-            itemBuilder: (context, index) {
-              return ProductCard(product: topPicks[index]);
-            },
-          );
-        },
+      body: RefreshIndicator(
+        onRefresh: _refreshTopPicks,
+        child: _buildBody(topPicks),
       ),
+    );
+  }
+
+  Widget _buildBody(List<ProductModel> topPicks) {
+    if (_isLoading && _products.isEmpty) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    }
+
+    if (topPicks.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 120),
+          Center(child: Text('No top picks available right now.')),
+        ],
+      );
+    }
+
+    return GridView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 0.58,
+      ),
+      itemCount: topPicks.length,
+      itemBuilder: (context, index) {
+        return ProductCard(product: topPicks[index]);
+      },
     );
   }
 }

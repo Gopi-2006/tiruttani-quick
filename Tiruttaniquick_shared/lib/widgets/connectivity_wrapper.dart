@@ -54,7 +54,9 @@ class _ConnectivityWrapperState extends State<ConnectivityWrapper> {
   void _showOfflineDialog() {
     if (_dialogEntry != null) return;
 
-    final overlayState = Overlay.of(context);
+    final overlayState = Overlay.maybeOf(context);
+    if (overlayState == null) return;
+
     _dialogEntry = OverlayEntry(
       builder: (context) {
         return ConnectivityDialog(
@@ -84,8 +86,10 @@ class _ConnectivityWrapperState extends State<ConnectivityWrapper> {
 
   void _showRestoredSnackBar() {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).removeCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
+    final scaffoldMessenger = ScaffoldMessenger.maybeOf(context);
+    if (scaffoldMessenger == null) return;
+    scaffoldMessenger.removeCurrentSnackBar();
+    scaffoldMessenger.showSnackBar(
       SnackBar(
         content: const Row(
           children: [

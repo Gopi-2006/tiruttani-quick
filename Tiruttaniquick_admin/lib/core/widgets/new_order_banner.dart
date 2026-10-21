@@ -24,7 +24,8 @@ class NewOrderBannerListener extends StatelessWidget {
           right: 0,
           child: SafeArea(
             child: ValueListenableBuilder<List<Map<String, dynamic>>>(
-              valueListenable: NewOrderAlertManager.instance.activeOrdersNotifier,
+              valueListenable:
+                  NewOrderAlertManager.instance.activeOrdersNotifier,
               builder: (context, activeOrders, _) {
                 if (activeOrders.isEmpty) {
                   return const SizedBox.shrink();
@@ -33,13 +34,16 @@ class NewOrderBannerListener extends StatelessWidget {
                 // Show the latest unacknowledged order
                 final latestOrder = activeOrders.last;
                 final orderId = latestOrder['orderId']?.toString() ?? '';
-                final orderNumber = latestOrder['orderNumber']?.toString() ?? orderId;
+                final orderNumber =
+                    latestOrder['orderNumber']?.toString() ?? orderId;
                 final totalAmount = latestOrder['totalAmount'] as num? ?? 0.0;
-                final customerName = latestOrder['customerName']?.toString() ?? 'Customer';
+                final customerName =
+                    latestOrder['customerName']?.toString() ?? 'Customer';
                 final queueCount = activeOrders.length;
 
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Material(
                     elevation: 12,
                     borderRadius: BorderRadius.circular(16),
@@ -54,7 +58,8 @@ class NewOrderBannerListener extends StatelessWidget {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+                            color:
+                                const Color(0xFFF59E0B).withValues(alpha: 0.35),
                             blurRadius: 16,
                             offset: const Offset(0, 4),
                           ),
@@ -96,7 +101,8 @@ class NewOrderBannerListener extends StatelessWidget {
                               ),
                               if (queueCount > 1)
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
                                   decoration: BoxDecoration(
                                     color: Colors.red.shade600,
                                     borderRadius: BorderRadius.circular(10),
@@ -137,15 +143,80 @@ class NewOrderBannerListener extends StatelessWidget {
                           Row(
                             children: [
                               Expanded(
+                                flex: 3,
+                                child: ElevatedButton(
+                                  onPressed: () async {
+                                    NewOrderAlertManager.instance
+                                        .acknowledgeOrder(orderId);
+                                    try {
+                                      await FirestoreService()
+                                          .updateOrderStatus(
+                                        orderId: orderId,
+                                        status: OrderStatuses.accepted,
+                                      );
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                                'Order #$orderNumber accepted!'),
+                                            backgroundColor:
+                                                const Color(0xFF10B981),
+                                          ),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                                'Failed to accept order: $e'),
+                                            backgroundColor: AppColors.error,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(
+                                        0xFF10B981), // Emerald Green
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.check_circle_outline,
+                                          size: 16),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Accept',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                flex: 3,
                                 child: ElevatedButton(
                                   onPressed: () {
-                                    NewOrderAlertManager.instance.acknowledgeOrder(orderId);
+                                    NewOrderAlertManager.instance
+                                        .acknowledgeOrder(orderId);
                                     onViewOrder(orderId);
                                   },
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFFF59E0B),
                                     foregroundColor: Colors.black87,
-                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 10),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(8),
                                     ),
@@ -154,10 +225,11 @@ class NewOrderBannerListener extends StatelessWidget {
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Icon(Icons.visibility, size: 16),
-                                      SizedBox(width: 6),
+                                      SizedBox(width: 4),
                                       Text(
-                                        'View Order',
-                                        style: TextStyle(fontWeight: FontWeight.bold),
+                                        'View',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold),
                                       ),
                                     ],
                                   ),
@@ -166,12 +238,14 @@ class NewOrderBannerListener extends StatelessWidget {
                               const SizedBox(width: 8),
                               OutlinedButton(
                                 onPressed: () {
-                                  NewOrderAlertManager.instance.acknowledgeOrder(orderId);
+                                  NewOrderAlertManager.instance
+                                      .acknowledgeOrder(orderId);
                                 },
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.white70,
                                   side: BorderSide(color: Colors.grey.shade600),
-                                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 10, horizontal: 10),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),

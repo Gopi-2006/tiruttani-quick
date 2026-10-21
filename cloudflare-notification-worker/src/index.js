@@ -24,6 +24,32 @@ function jsonResponse(data, status = 200) {
   });
 }
 
+// In-worker TTL deduplication cache for order status dispatches
+export const processedOrderStatusDispatches = new Map();
+const DISPATCH_DEDUP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export function checkAndRecordDispatchIdempotency(eventId) {
+  const now = Date.now();
+  // Prune expired entries if map grows large
+  if (processedOrderStatusDispatches.size > 1000) {
+    for (const [key, ts] of processedOrderStatusDispatches.entries()) {
+      if (now - ts > DISPATCH_DEDUP_TTL_MS) {
+        processedOrderStatusDispatches.delete(key);
+      }
+    }
+  }
+
+  if (processedOrderStatusDispatches.has(eventId)) {
+    const prevTs = processedOrderStatusDispatches.get(eventId);
+    if (now - prevTs < DISPATCH_DEDUP_TTL_MS) {
+      return false; // Already dispatched recently!
+    }
+  }
+
+  processedOrderStatusDispatches.set(eventId, now);
+  return true;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -90,7 +116,7 @@ export default {
           return jsonResponse({ error: 'Invalid JSON request body' }, 400);
         }
 
-        const { orderId, orderNumber, customerId, status, tokens, deliveryOtp, deliveryPersonName } = body;
+        const { orderId, orderNumber, customerId, status, tokens, deliveryOtp, deliveryPersonName, eventId } = body;
 
         if (!orderId) {
           return jsonResponse({ error: 'Missing required field: orderId' }, 400);
@@ -102,8 +128,25 @@ export default {
         const statusKey = normalizeStatus(status);
         if (!statusKey) {
           return jsonResponse({
-            error: `Unsupported status "${status}". Allowed: accepted, packed, out_for_delivery, delivered, cancelled`,
+            error: `Unsupported status "${status}". Allowed: accepted, packed, out_for_delivery, delivered, cancelled, delivery_partner_assigned`,
           }, 400);
+        }
+
+        const logicalEventId = eventId || `order_status_${orderId}_${statusKey}_${customerId || ''}`;
+
+        // Idempotency check: ignore duplicate dispatches for the exact same order status event
+        if (!checkAndRecordDispatchIdempotency(logicalEventId)) {
+          return jsonResponse({
+            success: true,
+            orderId,
+            statusKey,
+            eventId: logicalEventId,
+            message: 'Duplicate order status notification request ignored (idempotent)',
+            delivered: 0,
+            failed: 0,
+            skipped: true,
+            reason: 'duplicate_request_idempotent',
+          });
         }
 
         // Validate Tokens
@@ -116,6 +159,7 @@ export default {
             success: true,
             statusKey,
             orderId,
+            eventId: logicalEventId,
             message: 'No FCM registration tokens provided for customer; notification skipped.',
             delivered: 0,
             failed: 0,
@@ -133,12 +177,14 @@ export default {
           orderNumber: orderNumber || orderId.substring(0, 8),
           deliveryOtp: deliveryOtp || '',
           deliveryPersonName: deliveryPersonName || '',
+          eventId: logicalEventId,
         });
 
         return jsonResponse({
           success: true,
           orderId,
           statusKey,
+          eventId: logicalEventId,
           delivered: result.delivered,
           failed: result.failed,
           invalidTokens: result.invalidTokens,
@@ -189,10 +235,26 @@ export default {
           return jsonResponse({ error: 'Invalid JSON request body' }, 400);
         }
 
-        const { orderId, orderNumber, totalAmount, customerName, customerId, tokens } = body;
+        const { orderId, orderNumber, totalAmount, customerName, customerId, tokens, eventId } = body;
 
         if (!orderId) {
           return jsonResponse({ error: 'Missing required field: orderId' }, 400);
+        }
+
+        const logicalEventId = eventId || `order_new_${orderId}`;
+
+        // Idempotency check: ignore duplicate dispatches for the exact same new order alert
+        if (!checkAndRecordDispatchIdempotency(logicalEventId)) {
+          return jsonResponse({
+            success: true,
+            orderId,
+            eventId: logicalEventId,
+            message: 'Duplicate admin new order notification request ignored (idempotent)',
+            delivered: 0,
+            failed: 0,
+            skipped: true,
+            reason: 'duplicate_request_idempotent',
+          });
         }
 
         // Validate Admin Tokens

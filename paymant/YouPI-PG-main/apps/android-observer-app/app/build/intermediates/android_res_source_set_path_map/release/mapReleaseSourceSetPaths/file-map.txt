@@ -1,0 +1,35 @@
+com.youpi.observer.app-viewpager2-1.0.0-0 C:\Users\gopim\.gradle\caches\9.1.0\transforms\0601a4e85d209364816d285ea0e27324\workspace\transformed\viewpager2-1.0.0\res
+com.youpi.observer.app-transition-1.2.0-1 C:\Users\gopim\.gradle\caches\9.1.0\transforms\0cd49698671d8faec4fac8e442e94e37\workspace\transformed\transition-1.2.0\res
+com.youpi.observer.app-material-1.11.0-2 C:\Users\gopim\.gradle\caches\9.1.0\transforms\298e3d3bbda1720219eb2ce69743ba39\workspace\transformed\material-1.11.0\res
+com.youpi.observer.app-activity-1.8.0-3 C:\Users\gopim\.gradle\caches\9.1.0\transforms\3cd25024917a6f49336424c53b45b2eb\workspace\transformed\activity-1.8.0\res
+com.youpi.observer.app-annotation-experimental-1.3.0-4 C:\Users\gopim\.gradle\caches\9.1.0\transforms\42c62f324352232512b4db74694a5693\workspace\transformed\annotation-experimental-1.3.0\res
+com.youpi.observer.app-constraintlayout-2.0.1-5 C:\Users\gopim\.gradle\caches\9.1.0\transforms\56d209d68eb19c76b70e0712e6f155f6\workspace\transformed\constraintlayout-2.0.1\res
+com.youpi.observer.app-cardview-1.0.0-6 C:\Users\gopim\.gradle\caches\9.1.0\transforms\5c1ffb4f83556e6c505a0338b7ac3962\workspace\transformed\cardview-1.0.0\res
+com.youpi.observer.app-savedstate-1.2.1-7 C:\Users\gopim\.gradle\caches\9.1.0\transforms\60eca51515889ebbf3f0af3902f77f26\workspace\transformed\savedstate-1.2.1\res
+com.youpi.observer.app-security-crypto-1.1.0-alpha06-8 C:\Users\gopim\.gradle\caches\9.1.0\transforms\677f931b55a4dac9b706003b95cf956d\workspace\transformed\security-crypto-1.1.0-alpha06\res
+com.youpi.observer.app-core-1.12.0-9 C:\Users\gopim\.gradle\caches\9.1.0\transforms\69d19e6dd258e963c3a2ee4520d5bee7\workspace\transformed\core-1.12.0\res
+com.youpi.observer.app-lifecycle-livedata-core-2.6.1-10 C:\Users\gopim\.gradle\caches\9.1.0\transforms\70ed8545cb2d8ede810d9dee463c9c0a\workspace\transformed\lifecycle-livedata-core-2.6.1\res
+com.youpi.observer.app-lifecycle-process-2.6.1-11 C:\Users\gopim\.gradle\caches\9.1.0\transforms\7a67340851b80268030d9bf03f2269ee\workspace\transformed\lifecycle-process-2.6.1\res
+com.youpi.observer.app-emoji2-views-helper-1.2.0-12 C:\Users\gopim\.gradle\caches\9.1.0\transforms\89ca5c53c258dcc79a7ae9b585cbdf70\workspace\transformed\emoji2-views-helper-1.2.0\res
+com.youpi.observer.app-lifecycle-livedata-2.6.1-13 C:\Users\gopim\.gradle\caches\9.1.0\transforms\8aecbd3ab11160d70bacfdf41dc1a951\workspace\transformed\lifecycle-livedata-2.6.1\res
+com.youpi.observer.app-emoji2-1.2.0-14 C:\Users\gopim\.gradle\caches\9.1.0\transforms\8d58dbb020af939701139cc2c68a1853\workspace\transformed\emoji2-1.2.0\res
+com.youpi.observer.app-lifecycle-viewmodel-savedstate-2.6.1-15 C:\Users\gopim\.gradle\caches\9.1.0\transforms\9ddd1ccd5b1abd28e642359fadbf52c7\workspace\transformed\lifecycle-viewmodel-savedstate-2.6.1\res
+com.youpi.observer.app-drawerlayout-1.1.1-16 C:\Users\gopim\.gradle\caches\9.1.0\transforms\9ef8b1aa05cc42f18c25094dfce43d46\workspace\transformed\drawerlayout-1.1.1\res
+com.youpi.observer.app-profileinstaller-1.3.0-17 C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\res
+com.youpi.observer.app-coordinatorlayout-1.1.0-18 C:\Users\gopim\.gradle\caches\9.1.0\transforms\baaa1dc1bb16c7ac863804eec32674a5\workspace\transformed\coordinatorlayout-1.1.0\res
+com.youpi.observer.app-lifecycle-runtime-2.6.1-19 C:\Users\gopim\.gradle\caches\9.1.0\transforms\c4235574f80bd2148c2c28ebe78e49c4\workspace\transformed\lifecycle-runtime-2.6.1\res
+com.youpi.observer.app-startup-runtime-1.1.1-20 C:\Users\gopim\.gradle\caches\9.1.0\transforms\c78ceb85ab89c169d6568953f1b561ee\workspace\transformed\startup-runtime-1.1.1\res
+com.youpi.observer.app-appcompat-1.6.1-21 C:\Users\gopim\.gradle\caches\9.1.0\transforms\ca0c924056bdfcb3d091dcf5b39d169a\workspace\transformed\appcompat-1.6.1\res
+com.youpi.observer.app-fragment-1.3.6-22 C:\Users\gopim\.gradle\caches\9.1.0\transforms\e71066becd7b136963e2b2f9c618893f\workspace\transformed\fragment-1.3.6\res
+com.youpi.observer.app-core-ktx-1.12.0-23 C:\Users\gopim\.gradle\caches\9.1.0\transforms\ee3f28b90b2747923af8a42dfd0635d6\workspace\transformed\core-ktx-1.12.0\res
+com.youpi.observer.app-core-runtime-2.2.0-24 C:\Users\gopim\.gradle\caches\9.1.0\transforms\ee4e60317e1ace9503d400f04a7208c1\workspace\transformed\core-runtime-2.2.0\res
+com.youpi.observer.app-appcompat-resources-1.6.1-25 C:\Users\gopim\.gradle\caches\9.1.0\transforms\ef00080bd7a403457a4318dd632e921b\workspace\transformed\appcompat-resources-1.6.1\res
+com.youpi.observer.app-lifecycle-viewmodel-2.6.1-26 C:\Users\gopim\.gradle\caches\9.1.0\transforms\f8a9596bc9048b75f76cc784caaacc1f\workspace\transformed\lifecycle-viewmodel-2.6.1\res
+com.youpi.observer.app-recyclerview-1.1.0-27 C:\Users\gopim\.gradle\caches\9.1.0\transforms\f9b261a28e09d6f419e28db992cfea4c\workspace\transformed\recyclerview-1.1.0\res
+com.youpi.observer.app-pngs-28 C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\build\generated\res\pngs\release
+com.youpi.observer.app-updated_navigation_xml-29 C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\build\generated\updated_navigation_xml\release
+com.youpi.observer.app-packageReleaseResources-30 C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\build\intermediates\incremental\release\packageReleaseResources\merged.dir
+com.youpi.observer.app-packageReleaseResources-31 C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\build\intermediates\incremental\release\packageReleaseResources\stripped.dir
+com.youpi.observer.app-release-32 C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\build\intermediates\merged_res\release\mergeReleaseResources
+com.youpi.observer.app-main-33 C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\res
+com.youpi.observer.app-release-34 C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\release\res

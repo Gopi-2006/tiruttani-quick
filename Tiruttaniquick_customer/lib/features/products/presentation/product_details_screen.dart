@@ -33,8 +33,67 @@ class ProductDetailsScreen extends StatefulWidget {
 }
 
 class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
+  ProductModel? _product;
+  bool _isLoading = false;
   ProductVariantModel? _selectedVariant;
   bool _initializedVariant = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final cached = ProductRepository.instance.getCachedProductById(widget.productId);
+    if (cached != null) {
+      _product = cached;
+      _initVariant(cached);
+    } else {
+      _loadProduct();
+    }
+  }
+
+  void _initVariant(ProductModel product) {
+    if (!_initializedVariant) {
+      _initializedVariant = true;
+      if (product.variantsEnabled && product.variants.isNotEmpty) {
+        if (widget.selectedBarcode != null && widget.selectedBarcode!.isNotEmpty) {
+          final match = product.variants.where((v) => v.barcode == widget.selectedBarcode);
+          _selectedVariant = match.isNotEmpty ? match.first : product.variants.first;
+        } else if (widget.selectedVariantId != null && widget.selectedVariantId!.isNotEmpty) {
+          final match = product.variants.where((v) => v.id == widget.selectedVariantId);
+          _selectedVariant = match.isNotEmpty ? match.first : product.variants.first;
+        } else {
+          final inStock = product.variants.where((v) => !v.isOutOfStock).toList()
+            ..sort((a, b) => a.price.compareTo(b.price));
+          _selectedVariant = inStock.isNotEmpty ? inStock.first : product.variants.first;
+        }
+      }
+    }
+  }
+
+  Future<void> _loadProduct() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final product = await ProductRepository.instance.loadProductDetails(widget.productId);
+      if (mounted) {
+        setState(() {
+          _product = product;
+          _isLoading = false;
+        });
+        if (product != null) {
+          _initVariant(product);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -100,50 +159,47 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final firestore = context.read<FirestoreService>();
     final cartProvider = context.watch<CartProvider>();
     final currentUser = context.read<CurrentUserProvider>();
+    debugPrint('[PRODUCT] widget rebuild: ProductDetailsScreen (${widget.productId})');
 
-    return StreamBuilder<ProductModel>(
-      stream: firestore.productStream(widget.productId),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          if (!ConnectivityProvider.instance.isOnline) {
-            return Scaffold(
-              appBar: const CustomAppBar(title: 'Offline'),
-              body: OfflinePlaceholderWidget(
-                onRetrySuccess: () {},
-              ),
-            );
-          }
-          return const Scaffold(
-            appBar: CustomAppBar(title: 'Loading...'),
-            body: Center(child: LoadingWidget()),
-          );
-        }
+    if (_isLoading && _product == null) {
+      if (!ConnectivityProvider.instance.isOnline) {
+        return Scaffold(
+          appBar: const CustomAppBar(title: 'Offline'),
+          body: OfflinePlaceholderWidget(
+            onRetrySuccess: _loadProduct,
+          ),
+        );
+      }
+      return const Scaffold(
+        appBar: CustomAppBar(title: 'Loading...'),
+        body: Center(child: LoadingWidget()),
+      );
+    }
 
-        if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.isActive) {
-          if (!ConnectivityProvider.instance.isOnline && (!snapshot.hasData || snapshot.hasError)) {
-            return Scaffold(
-              appBar: const CustomAppBar(title: 'Offline'),
-              body: OfflinePlaceholderWidget(
-                onRetrySuccess: () {},
-              ),
-            );
-          }
-          return const Scaffold(
-            appBar: CustomAppBar(title: 'Unavailable'),
-            body: Center(
-              child: Text(
-                'This product is currently unavailable.',
-                style: TextStyle(fontSize: 16, color: AppColors.muted),
-              ),
-            ),
-          );
-        }
+    if (_product == null || !_product!.isActive) {
+      if (!ConnectivityProvider.instance.isOnline && _product == null) {
+        return Scaffold(
+          appBar: const CustomAppBar(title: 'Offline'),
+          body: OfflinePlaceholderWidget(
+            onRetrySuccess: _loadProduct,
+          ),
+        );
+      }
+      return const Scaffold(
+        appBar: CustomAppBar(title: 'Unavailable'),
+        body: Center(
+          child: Text(
+            'This product is currently unavailable.',
+            style: TextStyle(fontSize: 16, color: AppColors.muted),
+          ),
+        ),
+      );
+    }
 
-        final rawProduct = snapshot.data!;
-        final product = context.watch<StartupProvider>().applyOffersToSingle(rawProduct);
+    final rawProduct = _product!;
+    final product = context.read<StartupProvider>().applyOffersToSingle(rawProduct);
 
         // ── Variant init (runs once) ────────────────────────────────────
         if (!_initializedVariant) {
@@ -454,11 +510,10 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.text),
                       ),
                       const SizedBox(height: 12),
-                      StreamBuilder<List<ProductModel>>(
-                        stream: firestore.productsStream(categoryId: product.categoryId),
-                        builder: (context, snap) {
-                          if (!snap.hasData || snap.data!.isEmpty) return const SizedBox.shrink();
-                          final related = snap.data!.where((p) => p.id != product.id).toList();
+                      Builder(
+                        builder: (context) {
+                          final categoryProducts = ProductRepository.instance.getCachedProducts(categoryId: product.categoryId);
+                          final related = categoryProducts.where((p) => p.id != product.id).toList();
                           if (related.isEmpty) return const SizedBox.shrink();
                           return SizedBox(
                             height: 230,
@@ -599,8 +654,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             onDecrement: cartItem != null ? () => cartProvider.decrement(cartItem!) : null,
           ),
         );
-      },
-    );
   }
 
   Widget _buildReviewItem({

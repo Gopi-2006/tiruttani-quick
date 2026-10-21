@@ -7,6 +7,7 @@ import '../../services/startup_provider.dart';
 
 import 'animated_add_to_cart_button.dart';
 import 'skeleton_loader.dart';
+import 'variant_selector_bottom_sheet.dart';
 
 import '../../services/current_user_provider.dart';
 import '../../features/cart/presentation/cart_provider.dart';
@@ -32,7 +33,7 @@ class ProductCard extends StatelessWidget {
     final isDarkMode = isDark || Theme.of(context).brightness == Brightness.dark;
     final cartProvider = context.watch<CartProvider>();
     final currentUser = context.read<CurrentUserProvider>();
-    final startup = context.watch<StartupProvider>();
+    final startup = context.read<StartupProvider>();
 
     // Dynamic Offer Decoration
     final decoratedProduct = startup.applyOffersToSingle(product);
@@ -302,9 +303,9 @@ class ProductCard extends StatelessWidget {
                     isDark: isDarkMode,
                     onAdd: () {
                       if (currentUser.isAuthenticated) {
-                        // If multi-variant, open product detail to let user pick
+                        // If multi-variant, open bottom sheet directly without page navigation
                         if (hasMultipleVariants) {
-                          navigateToDetail();
+                          VariantSelectorBottomSheet.show(context, decoratedProduct);
                         } else {
                           cartProvider.add(decoratedProduct, variant: activeVariant);
                         }
@@ -312,6 +313,7 @@ class ProductCard extends StatelessWidget {
                         _showLoginPrompt(context);
                       }
                     },
+
                     onIncrement: () {
                       if (cartItem != null) cartProvider.increment(cartItem);
                     },

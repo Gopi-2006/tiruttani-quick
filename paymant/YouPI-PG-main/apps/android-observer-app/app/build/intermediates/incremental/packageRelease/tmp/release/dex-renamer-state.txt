@@ -1,0 +1,4 @@
+#Wed Oct 21 19:10:08 IST 2026
+base.0=C\:\\Users\\gopim\\Desktop\\Play console app\\blinkit_grocery_flutter\\paymant\\YouPI-PG-main\\apps\\android-observer-app\\app\\build\\intermediates\\dex\\release\\minifyReleaseWithR8\\classes.dex
+path.0=classes.dex
+renamed.0=classes.dex

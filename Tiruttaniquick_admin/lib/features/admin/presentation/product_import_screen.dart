@@ -9,41 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 
 import '../../../services/file_saver.dart';
-
-class ExcelRowData {
-  final int rowIndex;
-  final String productName;
-  final String productNameTamil;
-  final String category;
-  final String brand;
-  final String description;
-  final String unit;
-  final double mrp;
-  final double sellingPrice;
-  final int stock;
-  final String imageUrl;
-  final List<String> errors;
-  String? existingDocId;
-
-  ExcelRowData({
-    required this.rowIndex,
-    required this.productName,
-    required this.productNameTamil,
-    required this.category,
-    required this.brand,
-    required this.description,
-    required this.unit,
-    required this.mrp,
-    required this.sellingPrice,
-    required this.stock,
-    required this.imageUrl,
-    required this.errors,
-    this.existingDocId,
-  });
-
-  bool get isValid => errors.isEmpty;
-  bool get isDuplicate => existingDocId != null;
-}
+import '../../../services/excel_product_parser.dart';
 
 class ProductImportScreen extends StatefulWidget {
   const ProductImportScreen({super.key});
@@ -94,6 +60,7 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
         type: FileType.custom,
         allowedExtensions: ['xlsx'],
         allowMultiple: false,
+        withData: true,
       );
 
       if (result != null && result.files.isNotEmpty) {
@@ -127,182 +94,60 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
     });
 
     try {
-      Uint8List? fileBytes = _selectedFile!.bytes;
-      if (fileBytes == null && _selectedFile!.path != null) {
-        final file = File(_selectedFile!.path!);
-        fileBytes = await file.readAsBytes();
-      }
-
-      if (fileBytes == null) {
-        throw Exception('Could not read Excel file content.');
-      }
-
-      final excel = Excel.decodeBytes(fileBytes);
-      if (excel.tables.isEmpty) {
-        throw Exception('The selected Excel file contains no sheets.');
-      }
-
-      final sheetName = excel.tables.keys.first;
-      final sheet = excel.tables[sheetName];
-      if (sheet == null || sheet.maxRows <= 1) {
-        throw Exception('The Excel sheet is empty or contains no data rows.');
-      }
-
-      final rows = sheet.rows;
-      final headers = rows.first;
-      
-      // Validate columns
-      if (headers.length < 10) {
-        throw Exception('Excel file must have at least 10 columns in order.');
-      }
-
-      final expectedHeaders = [
-        'Product Name',
-        'Product Name (Tamil)',
-        'Category',
-        'Brand',
-        'Description',
-        'Unit',
-        'MRP',
-        'Selling Price',
-        'Stock Quantity',
-        'Image URL'
-      ];
-
-      for (int i = 0; i < 10; i++) {
-        final headerVal = headers[i]?.value?.toString().trim().toLowerCase();
-        if (headerVal != expectedHeaders[i].toLowerCase()) {
-          throw Exception(
-            "Column structure mismatch at index ${i + 1}. Expected '${expectedHeaders[i]}' but found '${headers[i]?.value ?? 'Empty'}'.\nPlease ensure the Excel template format matches exactly."
-          );
+      Uint8List? fileBytes = _selectedFile?.bytes;
+      final filePath = _selectedFile?.path;
+      if (fileBytes == null && filePath != null && filePath.isNotEmpty) {
+        final file = File(filePath);
+        if (await file.exists()) {
+          fileBytes = await file.readAsBytes();
         }
       }
 
+      if (fileBytes == null || fileBytes.isEmpty) {
+        throw Exception('Could not read Excel file content. Please re-select the file.');
+      }
+
+      if (!mounted) return;
       setState(() {
         _processingStatus = 'Validating rows & searching database duplicates...';
       });
 
       // Fetch duplicate detection dictionary (match by parent product name)
       final existingProducts = <String, String>{};
-      final db = FirebaseFirestore.instance;
-      final snapshot = await db.collection('products').get();
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
-        final name = (data['productName'] as String? ?? data['name'] as String? ?? '').trim().toLowerCase();
-        if (name.isNotEmpty) {
-          existingProducts[name] = doc.id;
+      try {
+        final db = FirebaseFirestore.instance;
+        final snapshot = await db.collection('products').get();
+        for (var doc in snapshot.docs) {
+          final data = doc.data();
+          final name = (data['productName']?.toString() ?? data['name']?.toString() ?? '').trim().toLowerCase();
+          if (name.isNotEmpty) {
+            existingProducts[name] = doc.id;
+          }
         }
+      } catch (e) {
+        debugPrint('Duplicate lookup warning: $e');
       }
 
-      final List<ExcelRowData> parsedRows = [];
-      final List<String> tempErrorLog = [];
+      final parseResult = ExcelProductParser.parseBytes(
+        fileBytes,
+        existingProducts: existingProducts,
+      );
 
-      for (int r = 1; r < rows.length; r++) {
-        final row = rows[r];
-        if (row.isEmpty || row.every((cell) => cell?.value == null)) {
-          continue; // Skip completely empty rows
-        }
-
-        // Pad row cells to 10 columns if short
-        while (row.length < 10) {
-          row.add(null);
-        }
-
-        final productName = row[0]?.value?.toString().trim() ?? '';
-        final productNameTamil = row[1]?.value?.toString().trim() ?? '';
-        final category = row[2]?.value?.toString().trim() ?? '';
-        final brand = row[3]?.value?.toString().trim() ?? '';
-        final description = row[4]?.value?.toString().trim() ?? '';
-        final unit = row[5]?.value?.toString().trim() ?? '';
-        
-        final rawMrp = row[6]?.value;
-        final rawPrice = row[7]?.value;
-        final rawStock = row[8]?.value;
-        final imageUrl = row[9]?.value?.toString().trim() ?? '';
-
-        final List<String> rowErrors = [];
-
-        // Validation Rules
-        if (productName.isEmpty) rowErrors.add('Product Name is empty');
-        if (unit.isEmpty) rowErrors.add('Unit is empty');
-
-        // Numeric parsing
-        double mrp = 0.0;
-        if (rawMrp == null) {
-          rowErrors.add('MRP is missing');
-        } else {
-          final parsed = double.tryParse(rawMrp.toString());
-          if (parsed == null) {
-            rowErrors.add('MRP is not numeric ("$rawMrp")');
-          } else {
-            mrp = parsed;
-          }
-        }
-
-        double price = 0.0;
-        if (rawPrice == null) {
-          rowErrors.add('Selling Price is missing');
-        } else {
-          final parsed = double.tryParse(rawPrice.toString());
-          if (parsed == null) {
-            rowErrors.add('Selling Price is not numeric ("$rawPrice")');
-          } else {
-            price = parsed;
-          }
-        }
-
-        int stock = 0;
-        if (rawStock == null) {
-          rowErrors.add('Stock Quantity is missing');
-        } else {
-          final parsed = int.tryParse(rawStock.toString());
-          if (parsed == null) {
-            rowErrors.add('Stock Quantity is not numeric ("$rawStock")');
-          } else {
-            stock = parsed;
-          }
-        }
-
-        // Duplicate Check (Matches existing parent product by name)
-        String? existingId;
-        if (productName.isNotEmpty) {
-          existingId = existingProducts[productName.toLowerCase()];
-        }
-
-        final rowData = ExcelRowData(
-          rowIndex: r + 1,
-          productName: productName,
-          productNameTamil: productNameTamil,
-          category: category,
-          brand: brand,
-          description: description,
-          unit: unit,
-          mrp: mrp,
-          sellingPrice: price,
-          stock: stock,
-          imageUrl: imageUrl,
-          errors: rowErrors,
-          existingDocId: existingId,
-        );
-
-        parsedRows.add(rowData);
-
-        if (rowErrors.isNotEmpty) {
-          tempErrorLog.add('Row ${r + 1}\n${rowErrors.join('\n')}\n--------------------------------');
-        }
-      }
-
+      if (!mounted) return;
       setState(() {
-        _allRows = parsedRows;
-        _errorLog = tempErrorLog;
+        _allRows = parseResult.rows;
+        _errorLog = parseResult.errorLog;
         _isProcessingFile = false;
         _applyFilters();
       });
-    } catch (e) {
-      setState(() {
-        _isProcessingFile = false;
-      });
-      _showErrorDialog('Parsing Failed', e.toString());
+    } catch (e, stackTrace) {
+      debugPrint('Parsing error: $e\n$stackTrace');
+      if (mounted) {
+        setState(() {
+          _isProcessingFile = false;
+        });
+        _showErrorDialog('Parsing Failed', '$e\n\nStack:\n$stackTrace');
+      }
     }
   }
 
@@ -340,9 +185,7 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
       };
     });
 
-    setState(() {
-      _filteredRows = filtered;
-    });
+    _filteredRows = filtered;
   }
 
   Future<void> _importProducts() async {
@@ -370,10 +213,7 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
     final Map<String, List<ExcelRowData>> groups = {};
     for (final row in validRows) {
       final nameKey = row.productName.trim();
-      if (!groups.containsKey(nameKey)) {
-        groups[nameKey] = [];
-      }
-      groups[nameKey]!.add(row);
+      groups.putIfAbsent(nameKey, () => []).add(row);
     }
 
     // 2. Fetch all existing categories first to avoid querying inside transaction
@@ -438,7 +278,8 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
     int rowCount = 0;
 
     for (final parentName in parentNames) {
-      final groupRows = groups[parentName]!;
+      final groupRows = groups[parentName] ?? [];
+      if (groupRows.isEmpty) continue;
       final firstRow = groupRows.first;
 
       // Resolve Category ID
@@ -718,7 +559,12 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.error_outline, color: Colors.red, size: 40),
         title: Text(title),
-        content: Text(message),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 400),
+          child: SingleChildScrollView(
+            child: SelectableText(message),
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -930,7 +776,7 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
                       Text(
                         _selectedFile == null
                             ? 'Select product import sheet (.xlsx only)'
-                            : '${_selectedFile!.name} (${(_selectedFile!.size / 1024).toStringAsFixed(1)} KB)',
+                            : '${_selectedFile?.name ?? "Selected File"} (${((_selectedFile?.size ?? 0) / 1024).toStringAsFixed(1)} KB)',
                         style: const TextStyle(color: AppColors.muted, fontSize: 13),
                       ),
                     ],

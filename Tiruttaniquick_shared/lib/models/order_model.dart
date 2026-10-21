@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import '../core/constants/order_status.dart';
 
 class OrderModel {
   final String id;
@@ -14,6 +15,7 @@ class OrderModel {
   final String status;
   final int statusIndex;
   final DateTime? placedAt;
+  final DateTime? acceptedAt;
   final DateTime? confirmedAt;
   final DateTime? packedAt;
   final DateTime? outForDeliveryAt;
@@ -33,8 +35,9 @@ class OrderModel {
   final String? cancelledBy;
   final DateTime? cancelledAt;
   final String? refundStatus;
-  // Push Notification token
   final String? customerFcmToken;
+  final String? youpiPaymentId;
+  final String? youpiCheckoutUrl;
 
   const OrderModel({
     required this.id,
@@ -49,6 +52,7 @@ class OrderModel {
     required this.status,
     required this.statusIndex,
     this.placedAt,
+    this.acceptedAt,
     this.confirmedAt,
     this.packedAt,
     this.outForDeliveryAt,
@@ -65,9 +69,14 @@ class OrderModel {
     this.cancelledAt,
     this.refundStatus,
     this.customerFcmToken,
+    this.youpiPaymentId,
+    this.youpiCheckoutUrl,
   });
 
   factory OrderModel.fromFirestore(String id, Map<String, dynamic> data) {
+    final normalizedStatus = OrderStatuses.normalize(data['status']?.toString());
+    final confirmedOrAccepted = _parseDateTime(data['acceptedAt'] ?? data['confirmedAt']);
+
     return OrderModel(
       id: id,
       orderNumber: data['orderNumber']?.toString() ?? id,
@@ -78,10 +87,11 @@ class OrderModel {
       totalPrice: _parseDouble(data['totalPrice']),
       paymentMethod: data['paymentMethod']?.toString() ?? 'COD',
       paymentStatus: data['paymentStatus']?.toString() ?? 'Pending',
-      status: _normalizeStatus(data['status']?.toString() ?? 'pending'),
-      statusIndex: _parseInt(data['statusIndex'], defaultValue: 1),
+      status: normalizedStatus,
+      statusIndex: _parseInt(data['statusIndex'], defaultValue: OrderStatuses.index(normalizedStatus)),
       placedAt: _parseDateTime(data['placedAt']),
-      confirmedAt: _parseDateTime(data['packedAt'] ?? data['confirmedAt']),
+      acceptedAt: confirmedOrAccepted,
+      confirmedAt: confirmedOrAccepted,
       packedAt: _parseDateTime(data['packedAt']),
       outForDeliveryAt: _parseDateTime(data['outForDeliveryAt']),
       deliveredAt: _parseDateTime(data['deliveredAt']),
@@ -97,6 +107,8 @@ class OrderModel {
       cancelledAt: _parseDateTime(data['cancelledAt']),
       refundStatus: data['refundStatus']?.toString(),
       customerFcmToken: data['customerFcmToken']?.toString(),
+      youpiPaymentId: data['youpiPaymentId']?.toString(),
+      youpiCheckoutUrl: data['youpiCheckoutUrl']?.toString(),
     );
   }
 
@@ -113,7 +125,8 @@ class OrderModel {
       'status': status,
       'statusIndex': statusIndex,
       'placedAt': placedAt ?? FieldValue.serverTimestamp(),
-      'confirmedAt': confirmedAt,
+      'acceptedAt': acceptedAt ?? confirmedAt,
+      'confirmedAt': confirmedAt ?? acceptedAt,
       'packedAt': packedAt,
       'outForDeliveryAt': outForDeliveryAt,
       'deliveredAt': deliveredAt,
@@ -129,6 +142,8 @@ class OrderModel {
       'cancelledAt': cancelledAt,
       'refundStatus': refundStatus,
       if (customerFcmToken != null && customerFcmToken!.isNotEmpty) 'customerFcmToken': customerFcmToken,
+      if (youpiPaymentId != null) 'youpiPaymentId': youpiPaymentId,
+      if (youpiCheckoutUrl != null) 'youpiCheckoutUrl': youpiCheckoutUrl,
     };
   }
 
@@ -150,6 +165,7 @@ class OrderModel {
     String? status,
     int? statusIndex,
     DateTime? placedAt,
+    DateTime? acceptedAt,
     DateTime? confirmedAt,
     DateTime? packedAt,
     DateTime? outForDeliveryAt,
@@ -180,6 +196,7 @@ class OrderModel {
       status: status ?? this.status,
       statusIndex: statusIndex ?? this.statusIndex,
       placedAt: placedAt ?? this.placedAt,
+      acceptedAt: acceptedAt ?? this.acceptedAt,
       confirmedAt: confirmedAt ?? this.confirmedAt,
       packedAt: packedAt ?? this.packedAt,
       outForDeliveryAt: outForDeliveryAt ?? this.outForDeliveryAt,
@@ -196,6 +213,8 @@ class OrderModel {
       cancelledAt: cancelledAt ?? this.cancelledAt,
       refundStatus: refundStatus ?? this.refundStatus,
       customerFcmToken: customerFcmToken ?? this.customerFcmToken,
+      youpiPaymentId: youpiPaymentId ?? this.youpiPaymentId,
+      youpiCheckoutUrl: youpiCheckoutUrl ?? this.youpiCheckoutUrl,
     );
   }
 }
@@ -207,12 +226,8 @@ DateTime? _parseDateTime(dynamic val) {
   return null;
 }
 
-String _normalizeStatus(String raw) {
-  final status = raw.toLowerCase().trim();
-  if (status == 'placed') return 'pending';
-  if (status == 'out for delivery') return 'out_for_delivery';
-  return status;
-}
+
+
 
 double _parseDouble(dynamic val) {
   if (val == null) return 0.0;

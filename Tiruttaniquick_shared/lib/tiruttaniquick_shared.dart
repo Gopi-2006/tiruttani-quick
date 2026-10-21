@@ -45,6 +45,7 @@ export 'services/new_order_alert_manager.dart';
 export 'services/connectivity_provider.dart';
 export 'services/offer_engine.dart';
 export 'services/product_search_engine.dart';
+export 'services/product_repository.dart';
 export 'package:shared_preferences/shared_preferences.dart';
 
 // Widgets

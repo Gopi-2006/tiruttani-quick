@@ -1,0 +1,237 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.youpi.observer"
+4    android:versionCode="1"
+5    android:versionName="1.0.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="26"
+9        android:targetSdkVersion="34" />
+10
+11    <!-- Network Connectivity for Merchant Gateway API -->
+12    <uses-permission android:name="android.permission.INTERNET" />
+12-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:7:5-67
+12-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:7:22-64
+13    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+13-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:8:5-79
+13-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:8:22-76
+14
+15    <!-- Service Restart on Device Reboot -->
+16    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+16-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:11:5-81
+16-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:11:22-78
+17    <uses-permission android:name="android.permission.WAKE_LOCK" />
+17-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:12:5-68
+17-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:12:22-65
+18    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+18-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:13:5-77
+18-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:13:22-74
+19    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+19-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:14:5-87
+19-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:14:22-84
+20
+21    <!-- Persistent Ongoing Foreground Notification (Android 13+) -->
+22    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+22-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:17:5-77
+22-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:17:22-74
+23
+24    <!-- Bank Credit Transaction SMS Capture -->
+25    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+25-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:20:5-70
+25-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:20:22-67
+26
+27    <!-- Camera for Merchant QR Pairing -->
+28    <uses-permission android:name="android.permission.CAMERA" />
+28-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:23:5-65
+28-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:23:22-62
+29    <uses-permission android:name="android.permission.VIBRATE" />
+29-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:24:5-66
+29-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:24:22-63
+30
+31    <permission
+31-->[androidx.core:core:1.12.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\69d19e6dd258e963c3a2ee4520d5bee7\workspace\transformed\core-1.12.0\AndroidManifest.xml:22:5-24:47
+32        android:name="com.youpi.observer.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+32-->[androidx.core:core:1.12.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\69d19e6dd258e963c3a2ee4520d5bee7\workspace\transformed\core-1.12.0\AndroidManifest.xml:23:9-81
+33        android:protectionLevel="signature" />
+33-->[androidx.core:core:1.12.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\69d19e6dd258e963c3a2ee4520d5bee7\workspace\transformed\core-1.12.0\AndroidManifest.xml:24:9-44
+34
+35    <uses-permission android:name="com.youpi.observer.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+35-->[androidx.core:core:1.12.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\69d19e6dd258e963c3a2ee4520d5bee7\workspace\transformed\core-1.12.0\AndroidManifest.xml:26:5-97
+35-->[androidx.core:core:1.12.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\69d19e6dd258e963c3a2ee4520d5bee7\workspace\transformed\core-1.12.0\AndroidManifest.xml:26:22-94
+36
+37    <application
+37-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:26:5-86:19
+38        android:allowBackup="false"
+38-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:27:9-36
+39        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+39-->[androidx.core:core:1.12.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\69d19e6dd258e963c3a2ee4520d5bee7\workspace\transformed\core-1.12.0\AndroidManifest.xml:28:18-86
+40        android:extractNativeLibs="false"
+41        android:icon="@mipmap/ic_launcher"
+41-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:29:9-43
+42        android:label="YOUPI Payment Observer"
+42-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:28:9-47
+43        android:networkSecurityConfig="@xml/network_security_config"
+43-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:31:9-69
+44        android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+44-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:30:9-77
+45        android:usesCleartextTraffic="false" >
+45-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:32:9-45
+46        <activity
+46-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:34:9-43:20
+47            android:name="com.youpi.observer.MainActivity"
+47-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:35:13-59
+48            android:exported="true"
+48-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:36:13-36
+49            android:screenOrientation="portrait"
+49-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:38:13-49
+50            android:windowSoftInputMode="adjustResize" >
+50-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:37:13-55
+51            <intent-filter>
+51-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:39:13-42:29
+52                <action android:name="android.intent.action.MAIN" />
+52-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:40:17-69
+52-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:40:25-66
+53
+54                <category android:name="android.intent.category.LAUNCHER" />
+54-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:41:17-77
+54-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:41:27-74
+55            </intent-filter>
+56        </activity>
+57        <activity
+57-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:45:9-49:74
+58            android:name="com.youpi.observer.QrScannerActivity"
+58-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:46:13-64
+59            android:exported="false"
+59-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:47:13-37
+60            android:screenOrientation="portrait"
+60-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:48:13-49
+61            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+61-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:49:13-71
+62
+63        <!-- Ongoing Foreground Sync Daemon Service -->
+64        <service
+64-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:52:9-55:56
+65            android:name="com.youpi.observer.ForegroundService"
+65-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:53:13-64
+66            android:exported="false"
+66-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:54:13-37
+67            android:foregroundServiceType="dataSync" />
+67-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:55:13-53
+68
+69        <!-- Notification Listener Service for UPI Apps -->
+70        <service
+70-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:58:9-66:19
+71            android:name="com.youpi.observer.PaymentNotificationListenerService"
+71-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:59:13-81
+72            android:exported="true"
+72-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:62:13-36
+73            android:label="YOUPI Payment Observer Service"
+73-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:60:13-59
+74            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" >
+74-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:61:13-87
+75            <intent-filter>
+75-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:63:13-65:29
+76                <action android:name="android.service.notification.NotificationListenerService" />
+76-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:64:17-99
+76-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:64:25-96
+77            </intent-filter>
+78        </service>
+79
+80        <!-- Standard SMS Receiver for Bank Credit Notifications Only -->
+81        <receiver
+81-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:69:9-75:20
+82            android:name="com.youpi.observer.SmsReceiver"
+82-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:70:13-58
+83            android:exported="true" >
+83-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:71:13-36
+84            <intent-filter>
+84-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:72:13-74:29
+85                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+85-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:73:17-82
+85-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:73:25-79
+86            </intent-filter>
+87        </receiver>
+88
+89        <!-- Auto-launch Foreground Service on Phone Reboot -->
+90        <receiver
+90-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:78:9-84:20
+91            android:name="com.youpi.observer.BootReceiver"
+91-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:79:13-59
+92            android:exported="true" >
+92-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:80:13-36
+93            <intent-filter>
+93-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:81:13-83:29
+94                <action android:name="android.intent.action.BOOT_COMPLETED" />
+94-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:82:17-79
+94-->C:\Users\gopim\Desktop\Play console app\blinkit_grocery_flutter\paymant\YouPI-PG-main\apps\android-observer-app\app\src\main\AndroidManifest.xml:82:25-76
+95            </intent-filter>
+96        </receiver>
+97
+98        <provider
+98-->[androidx.emoji2:emoji2:1.2.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\8d58dbb020af939701139cc2c68a1853\workspace\transformed\emoji2-1.2.0\AndroidManifest.xml:24:9-32:20
+99            android:name="androidx.startup.InitializationProvider"
+99-->[androidx.emoji2:emoji2:1.2.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\8d58dbb020af939701139cc2c68a1853\workspace\transformed\emoji2-1.2.0\AndroidManifest.xml:25:13-67
+100            android:authorities="com.youpi.observer.androidx-startup"
+100-->[androidx.emoji2:emoji2:1.2.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\8d58dbb020af939701139cc2c68a1853\workspace\transformed\emoji2-1.2.0\AndroidManifest.xml:26:13-68
+101            android:exported="false" >
+101-->[androidx.emoji2:emoji2:1.2.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\8d58dbb020af939701139cc2c68a1853\workspace\transformed\emoji2-1.2.0\AndroidManifest.xml:27:13-37
+102            <meta-data
+102-->[androidx.emoji2:emoji2:1.2.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\8d58dbb020af939701139cc2c68a1853\workspace\transformed\emoji2-1.2.0\AndroidManifest.xml:29:13-31:52
+103                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+103-->[androidx.emoji2:emoji2:1.2.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\8d58dbb020af939701139cc2c68a1853\workspace\transformed\emoji2-1.2.0\AndroidManifest.xml:30:17-75
+104                android:value="androidx.startup" />
+104-->[androidx.emoji2:emoji2:1.2.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\8d58dbb020af939701139cc2c68a1853\workspace\transformed\emoji2-1.2.0\AndroidManifest.xml:31:17-49
+105            <meta-data
+105-->[androidx.lifecycle:lifecycle-process:2.6.1] C:\Users\gopim\.gradle\caches\9.1.0\transforms\7a67340851b80268030d9bf03f2269ee\workspace\transformed\lifecycle-process-2.6.1\AndroidManifest.xml:29:13-31:52
+106                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+106-->[androidx.lifecycle:lifecycle-process:2.6.1] C:\Users\gopim\.gradle\caches\9.1.0\transforms\7a67340851b80268030d9bf03f2269ee\workspace\transformed\lifecycle-process-2.6.1\AndroidManifest.xml:30:17-78
+107                android:value="androidx.startup" />
+107-->[androidx.lifecycle:lifecycle-process:2.6.1] C:\Users\gopim\.gradle\caches\9.1.0\transforms\7a67340851b80268030d9bf03f2269ee\workspace\transformed\lifecycle-process-2.6.1\AndroidManifest.xml:31:17-49
+108            <meta-data
+108-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:29:13-31:52
+109                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+109-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:30:17-85
+110                android:value="androidx.startup" />
+110-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:31:17-49
+111        </provider>
+112
+113        <receiver
+113-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:34:9-52:20
+114            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+114-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:35:13-76
+115            android:directBootAware="false"
+115-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:36:13-44
+116            android:enabled="true"
+116-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:37:13-35
+117            android:exported="true"
+117-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:38:13-36
+118            android:permission="android.permission.DUMP" >
+118-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:39:13-57
+119            <intent-filter>
+119-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:40:13-42:29
+120                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+120-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:41:17-91
+120-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:41:25-88
+121            </intent-filter>
+122            <intent-filter>
+122-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:43:13-45:29
+123                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+123-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:44:17-85
+123-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:44:25-82
+124            </intent-filter>
+125            <intent-filter>
+125-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:46:13-48:29
+126                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+126-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:47:17-88
+126-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:47:25-85
+127            </intent-filter>
+128            <intent-filter>
+128-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:49:13-51:29
+129                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+129-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:50:17-95
+129-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\gopim\.gradle\caches\9.1.0\transforms\a39821ccb0f06920620ae671935fcef5\workspace\transformed\profileinstaller-1.3.0\AndroidManifest.xml:50:25-92
+130            </intent-filter>
+131        </receiver>
+132    </application>
+133
+134</manifest>

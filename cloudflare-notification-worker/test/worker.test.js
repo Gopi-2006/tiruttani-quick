@@ -7,7 +7,7 @@ import {
   buildAdminNewOrderFcmMessage,
   NOTIFICATION_STATUSES,
 } from '../src/templates.js';
-import worker from '../src/index.js';
+import worker, { checkAndRecordDispatchIdempotency } from '../src/index.js';
 
 test('Status normalizer correctly normalizes various status casing and formats', () => {
   assert.equal(normalizeStatus('Pending'), null); // pending doesn't trigger customer push
@@ -196,5 +196,72 @@ test('Worker POST /send-admin-new-order-notification rejects unauthenticated req
   const body = await res.json();
   assert.match(body.error, /Unauthorized/);
 });
+
+test('Cloudflare Worker idempotency suppresses repeated status dispatches for the same order', () => {
+  const event1 = 'order_status_TQ261021113341515HAIR_cancelled_CUST101';
+  // First dispatch: allowed
+  assert.equal(checkAndRecordDispatchIdempotency(event1), true);
+  // Duplicate dispatch: suppressed
+  assert.equal(checkAndRecordDispatchIdempotency(event1), false);
+  // Repeated attempt: still suppressed
+  assert.equal(checkAndRecordDispatchIdempotency(event1), false);
+
+  // Different status transition for same order: allowed
+  const event2 = 'order_status_TQ261021113341515HAIR_delivered_CUST101';
+  assert.equal(checkAndRecordDispatchIdempotency(event2), true);
+
+  // Different customer/order: allowed
+  const event3 = 'order_status_TQ_OTHER_ORDER_cancelled_CUST202';
+  assert.equal(checkAndRecordDispatchIdempotency(event3), true);
+});
+
+test('buildFcmV1Message sets collapse_key, tag, and eventId for Android shade deduplication', () => {
+  const msg = buildFcmV1Message({
+    token: 'test_token',
+    statusKey: NOTIFICATION_STATUSES.CANCELLED,
+    orderId: 'TQ261021113341515HAIR',
+    orderNumber: 'TQ261021113341515HAIR',
+    eventId: 'order_status_TQ261021113341515HAIR_cancelled_CUST101',
+  });
+
+  assert.equal(msg.message.android.collapse_key, 'order_TQ261021113341515HAIR');
+  assert.equal(msg.message.android.notification.tag, 'order_TQ261021113341515HAIR');
+  assert.equal(msg.message.data.tag, 'order_TQ261021113341515HAIR');
+  assert.equal(msg.message.data.eventId, 'order_status_TQ261021113341515HAIR_cancelled_CUST101');
+  assert.equal(msg.message.notification.title, 'Order Cancelled');
+  assert.equal(msg.message.notification.body, 'Your Tiruttani Quick order #TQ261021113341515HAIR has been cancelled.');
+});
+
+test('Delivery Partner Assignment notification content generation', () => {
+  // Case 1: Partner name provided
+  const withPartner = getNotificationContent(
+    NOTIFICATION_STATUSES.DELIVERY_ASSIGNED,
+    'order_123',
+    'TQ-1234',
+    '',
+    'Ravi Kumar'
+  );
+  assert.equal(withPartner.title, 'Delivery Partner Assigned');
+  assert.equal(withPartner.body, 'Ravi Kumar has been assigned to deliver your order #TQ-1234.');
+
+  // Case 2: Partner name missing/empty (graceful fallback)
+  const withoutPartner = getNotificationContent(
+    NOTIFICATION_STATUSES.DELIVERY_ASSIGNED,
+    'order_123',
+    'TQ-1234',
+    '',
+    ''
+  );
+  assert.equal(withoutPartner.title, 'Delivery Partner Assigned');
+  assert.equal(withoutPartner.body, 'A delivery partner has been assigned to your order #TQ-1234.');
+
+  // Ensure never contains undefined, null, or raw JSON
+  assert.equal(withPartner.body.includes('undefined'), false);
+  assert.equal(withPartner.body.includes('null'), false);
+  assert.equal(withoutPartner.body.includes('undefined'), false);
+  assert.equal(withoutPartner.body.includes('null'), false);
+});
+
+
 
 

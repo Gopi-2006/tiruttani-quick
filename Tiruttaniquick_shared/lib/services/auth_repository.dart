@@ -28,6 +28,11 @@ class AuthRepository {
   static const String msg91AuthKey = String.fromEnvironment('MSG91_AUTH_KEY', defaultValue: '');
 
   AuthRepository() {
+    debugPrint(
+      '[GoogleSignIn] Web client ID configured: '
+      '${googleWebClientId.isNotEmpty}',
+    );
+
     _googleSignIn = GoogleSignIn(serverClientId: googleWebClientId);
 
     try {

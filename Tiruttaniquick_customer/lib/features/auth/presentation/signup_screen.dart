@@ -8,6 +8,7 @@ import '../../../core/utils/validators.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/custom_textfield.dart';
 import '../../../core/widgets/custom_app_bar.dart';
+import '../../../services/current_user_provider.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -23,7 +24,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _passwordController = TextEditingController();
   final _auth = AuthRepository();
   bool _loading = false;
-  bool _acceptedPrivacyPolicy = false;
+  late bool _acceptedPrivacyPolicy;
+
+  @override
+  void initState() {
+    super.initState();
+    _acceptedPrivacyPolicy = currentUserProvider.privacyPolicyAccepted;
+  }
 
   @override
   void dispose() {
@@ -78,11 +85,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     Checkbox(
                       value: _acceptedPrivacyPolicy,
                       activeColor: AppColors.primary,
-                      onChanged: (val) {
-                        setState(() {
-                          _acceptedPrivacyPolicy = val ?? false;
-                        });
-                      },
+                      onChanged: _loading
+                          ? null
+                          : (val) {
+                              final accepted = val ?? false;
+                              setState(() {
+                                _acceptedPrivacyPolicy = accepted;
+                              });
+                              currentUserProvider.setPrivacyPolicyAccepted(accepted);
+                            },
                     ),
                     Expanded(
                       child: Wrap(

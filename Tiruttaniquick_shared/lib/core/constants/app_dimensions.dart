@@ -52,7 +52,7 @@ class AppDimensions {
 
   // Custom widget dimensions
   static const double emptyStateIconSize = 64.0;
-  static const double categoryImageSize = 64.0;
+  static const double categoryImageSize = 92.0;
   static const double categoryIconSize = 30.0;
   static const double imageSizeProductTile = 56.0;
 }

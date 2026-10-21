@@ -73,6 +73,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".staging"
+        }
         release {
             // Release builds ALWAYS use the release signing config.
             // NO debug fallback exists. Missing/invalid key.properties causes a

@@ -142,15 +142,22 @@ class AppNetworkImage extends StatelessWidget {
 
   Widget _buildDefaultErrorWidget(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final double iconSize = (width != null && width! < 60) ? 20 : ((width != null && width! < 100) ? 28 : 36);
     return Container(
       width: width ?? double.infinity,
       height: height ?? double.infinity,
-      color: isDark ? const Color(0xFF222222) : Colors.grey.shade50,
+      color: isDark ? const Color(0xFF222222) : const Color(0xFFF9F9FB),
       child: Center(
-        child: Icon(
-          Icons.image_not_supported_outlined,
-          size: (width != null && width! < 60) ? 20 : 32,
-          color: isDark ? AppColors.darkMuted : Colors.grey.shade400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.shopping_bag_outlined,
+              size: iconSize,
+              color: isDark ? AppColors.darkMuted : AppColors.primary.withValues(alpha: 0.45),
+            ),
+          ],
         ),
       ),
     );

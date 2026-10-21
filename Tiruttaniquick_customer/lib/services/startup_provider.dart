@@ -13,6 +13,7 @@ import 'service_area_provider.dart';
 import 'admob_service.dart';
 
 class StartupProvider extends ChangeNotifier {
+  final FirestoreService _firestore = FirestoreService();
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
 
@@ -105,6 +106,18 @@ class StartupProvider extends ChangeNotifier {
         _fetchFirstPageProducts().timeout(const Duration(seconds: 4), onTimeout: () {
           debugPrint('[Startup Log] Products fetch timed out');
         }).catchError((e) => debugPrint('[Startup Log] Products fetch error: $e')),
+        ProductRepository.instance.loadInitialProducts().timeout(const Duration(seconds: 5), onTimeout: () {
+          debugPrint('[Startup Log] ProductRepository catalog preload timed out');
+          return <ProductModel>[];
+        }).then((preloadedProducts) {
+          if (preloadedProducts.isNotEmpty) {
+            _products = applyOffers(preloadedProducts.where((p) => p.isActive).toList());
+          }
+          return preloadedProducts;
+        }).catchError((e) {
+          debugPrint('[Startup Log] ProductRepository preload error: $e');
+          return <ProductModel>[];
+        }),
         _initBackgroundServices().timeout(const Duration(seconds: 4), onTimeout: () {
           debugPrint('[Startup Log] Background services init timed out');
         }).catchError((e) => debugPrint('[Startup Log] Background services error: $e')),
@@ -139,32 +152,39 @@ class StartupProvider extends ChangeNotifier {
   }
 
   void _startMarketingSubscriptions() {
-    final firestore = FirestoreService();
-    
     _bannersSub?.cancel();
-    _bannersSub = firestore.bannersStream(includeInactive: false).listen((data) {
+    _bannersSub = _firestore.bannersStream(includeInactive: false).listen((data) {
       _banners = data;
       _reapplyOffersToAllCachedProducts();
-      notifyListeners();
     });
 
     _offersSub?.cancel();
-    _offersSub = firestore.offersStream(includeInactive: false).listen((data) {
+    _offersSub = _firestore.offersStream(includeInactive: false).listen((data) {
       _offers = data;
       _reapplyOffersToAllCachedProducts();
-      notifyListeners();
     });
 
     _flashSalesSub?.cancel();
-    _flashSalesSub = firestore.flashSalesStream(includeInactive: false).listen((data) {
+    _flashSalesSub = _firestore.flashSalesStream(includeInactive: false).listen((data) {
       _flashSales = data;
       _reapplyOffersToAllCachedProducts();
-      notifyListeners();
     });
   }
 
   void _reapplyOffersToAllCachedProducts() {
-    _products = applyOffers(_products);
+    final updated = applyOffers(_products);
+    // Only notify listeners if the list actually changed (count or first-item price/id differ).
+    // This avoids mass-rebuilding every product card on every marketing stream tick
+    // when the effective offer prices haven't changed.
+    final bool changed = updated.length != _products.length ||
+        (updated.isNotEmpty &&
+            _products.isNotEmpty &&
+            (updated.first.id != _products.first.id ||
+             updated.first.price != _products.first.price));
+    _products = updated;
+    if (changed) {
+      notifyListeners();
+    }
   }
 
   List<ProductModel> applyOffers(List<ProductModel> productList) {

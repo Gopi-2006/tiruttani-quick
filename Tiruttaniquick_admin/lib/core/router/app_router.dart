@@ -21,13 +21,14 @@ final router = GoRouter(
     if (currentUser.loading) return null;
 
     final isAuthenticated = currentUser.isAuthenticated;
+    final isAdmin = currentUser.role == AppRoles.admin;
 
-    // Unauthenticated user -> Route to Login screen
-    if (!isAuthenticated) {
+    // Unauthenticated user or non-admin -> Route to Login screen
+    if (!isAuthenticated || !isAdmin) {
       return location == AppRoutes.login ? null : AppRoutes.login;
     }
 
-    // Authenticated user on Login -> Route directly to Admin Dashboard
+    // Authenticated admin on Login -> Route directly to Admin Dashboard
     if (location == AppRoutes.login) {
       return AppRoutes.admin;
     }

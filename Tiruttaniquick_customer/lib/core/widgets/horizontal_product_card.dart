@@ -9,6 +9,7 @@ import '../../services/settings_provider.dart';
 import '../../services/startup_provider.dart';
 import 'animated_add_to_cart_button.dart';
 import 'skeleton_loader.dart';
+import 'variant_selector_bottom_sheet.dart';
 
 /// Amazon-style compact horizontal product card for search results and list views.
 class HorizontalProductCard extends StatelessWidget {
@@ -28,7 +29,7 @@ class HorizontalProductCard extends StatelessWidget {
     final isDarkMode = isDark || Theme.of(context).brightness == Brightness.dark;
     final cartProvider = context.watch<CartProvider>();
     final currentUser = context.read<CurrentUserProvider>();
-    final startup = context.watch<StartupProvider>();
+    final startup = context.read<StartupProvider>();
 
     // Apply dynamic promotions / offers
     final decoratedProduct = startup.applyOffersToSingle(product);
@@ -350,7 +351,7 @@ class HorizontalProductCard extends StatelessWidget {
                             onAdd: () {
                               if (currentUser.isAuthenticated) {
                                 if (hasMultipleVariants) {
-                                  navigateToDetail();
+                                  VariantSelectorBottomSheet.show(context, decoratedProduct);
                                 } else {
                                   cartProvider.add(decoratedProduct, variant: activeVariant);
                                 }
@@ -358,6 +359,7 @@ class HorizontalProductCard extends StatelessWidget {
                                 _showLoginPrompt(context);
                               }
                             },
+
                             onIncrement: () {
                               if (cartItem != null) cartProvider.increment(cartItem);
                             },

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../core/constants/order_status.dart';
 
 /// Service responsible for dispatching order status push notifications
 /// to customer devices via the Cloudflare Notification Worker (FCM HTTP v1).
@@ -38,6 +39,7 @@ class NotificationSenderService {
     String? deliveryOtp,
     String? deliveryPersonName,
     String? directToken,
+    String? eventId,
   }) async {
     debugPrint('[FCM DIAGNOSTICS] sendOrderStatusNotification called: orderId=$orderId, status=$status, customerId=$customerId');
     if (orderId.isEmpty || status.isEmpty || customerId.isEmpty) {
@@ -75,12 +77,15 @@ class NotificationSenderService {
 
       // 3. Make authenticated request to Cloudflare Worker
       final uri = Uri.parse('$workerEndpoint/send-order-notification');
+      final canonical = OrderStatuses.normalize(status);
+      final logicalEventId = eventId ?? 'order_status_${orderId}_${canonical}_$customerId';
       final payload = {
         'orderId': orderId,
         'orderNumber': orderNumber ?? (orderId.length > 8 ? orderId.substring(0, 8) : orderId),
         'customerId': customerId,
         'status': status,
         'tokens': tokens,
+        'eventId': logicalEventId,
         if (deliveryOtp != null && deliveryOtp.isNotEmpty) 'deliveryOtp': deliveryOtp,
         if (deliveryPersonName != null && deliveryPersonName.isNotEmpty) 'deliveryPersonName': deliveryPersonName,
       };
@@ -321,6 +326,7 @@ class NotificationSenderService {
     required double totalAmount,
     String? customerName,
     String? customerId,
+    String? eventId,
   }) async {
     if (orderId.isEmpty) {
       debugPrint('[NotificationSenderService] Missing orderId; skipping new order push.');
@@ -350,6 +356,7 @@ class NotificationSenderService {
 
       // 3. Make authenticated request to Cloudflare Worker
       final uri = Uri.parse('$workerEndpoint/send-admin-new-order-notification');
+      final logicalEventId = eventId ?? 'order_new_$orderId';
       final payload = {
         'orderId': orderId,
         'orderNumber': orderNumber,
@@ -358,6 +365,7 @@ class NotificationSenderService {
         'customerId': customerId ?? (user.uid),
         'status': 'pending',
         'tokens': adminTokens,
+        'eventId': logicalEventId,
       };
 
       final response = await http

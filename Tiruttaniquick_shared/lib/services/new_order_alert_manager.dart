@@ -3,6 +3,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Singleton manager for continuous repeating NEW ORDER alerts on Admin devices.
 ///
@@ -13,11 +14,16 @@ import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 /// 4. Duplicate protection: ignores duplicate FCM triggers for the same orderId.
 /// 5. Multiple order support: maintains an active unacknowledged queue and continues alerting until all are cleared.
 /// 6. Safety auto-cutoff after 5 minutes (75 ticks) to avoid draining battery on unattended devices.
+/// 7. Persists acknowledgement state in SharedPreferences to prevent re-ringing on app restart.
 class NewOrderAlertManager {
   static final NewOrderAlertManager instance = NewOrderAlertManager._();
-  NewOrderAlertManager._();
+  NewOrderAlertManager._() {
+    _loadPersistedAcknowledgedIds();
+  }
 
+  static const String _prefKeyAcknowledged = 'tq_acknowledged_order_ids_v1';
   final Set<String> _activeOrderIds = <String>{};
+  final Set<String> _persistedAcknowledgedIds = <String>{};
   final Map<String, Map<String, dynamic>> _orderDetails = <String, Map<String, dynamic>>{};
   
   Timer? _repeatingTimer;
@@ -37,6 +43,29 @@ class NewOrderAlertManager {
   /// Returns a set of all currently unacknowledged order IDs.
   Set<String> get activeOrderIds => Set<String>.unmodifiable(_activeOrderIds);
 
+  Future<void> _loadPersistedAcknowledgedIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_prefKeyAcknowledged) ?? [];
+      _persistedAcknowledgedIds.addAll(list);
+    } catch (e) {
+      debugPrint('[NewOrderAlertManager] Error loading persisted acknowledged IDs: $e');
+    }
+  }
+
+  Future<void> _persistAcknowledgedId(String orderId) async {
+    _persistedAcknowledgedIds.add(orderId);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Keep at most 200 recent IDs to avoid unbounded growth
+      final list = _persistedAcknowledgedIds.toList();
+      final trimmed = list.length > 200 ? list.sublist(list.length - 200) : list;
+      await prefs.setStringList(_prefKeyAcknowledged, trimmed);
+    } catch (e) {
+      debugPrint('[NewOrderAlertManager] Error saving acknowledged ID: $e');
+    }
+  }
+
   /// Handle receipt of a new order notification.
   /// Deduplicates by [orderId] and starts the controlled repeating alert loop.
   void handleNewOrderReceived({
@@ -45,18 +74,25 @@ class NewOrderAlertManager {
     double? totalAmount,
     String? customerName,
     String? customerId,
+    String? paymentMethod,
     Map<String, dynamic>? rawPayload,
   }) {
     if (orderId.trim().isEmpty) return;
     final normalizedId = orderId.trim();
 
-    // 1. Duplicate Protection: If order is already in the active alert queue, ignore
+    // 1. Persistent Check: If order was already acknowledged previously, do not alert
+    if (_persistedAcknowledgedIds.contains(normalizedId)) {
+      debugPrint('[NewOrderAlertManager] Order $normalizedId was already acknowledged. Skipping alert.');
+      return;
+    }
+
+    // 2. Duplicate Protection: If order is already in the active alert queue, ignore
     if (_activeOrderIds.contains(normalizedId)) {
       debugPrint('[NewOrderAlertManager] Duplicate new-order alert ignored for order: $normalizedId');
       return;
     }
 
-    // 2. Add to active unacknowledged order queue
+    // 3. Add to active unacknowledged order queue
     _activeOrderIds.add(normalizedId);
     _orderDetails[normalizedId] = {
       'orderId': normalizedId,
@@ -64,6 +100,7 @@ class NewOrderAlertManager {
       'totalAmount': totalAmount ?? 0.0,
       'customerName': customerName ?? 'Customer',
       'customerId': customerId ?? '',
+      'paymentMethod': paymentMethod ?? rawPayload?['paymentMethod'] ?? 'COD',
       'receivedAt': DateTime.now(),
       'rawPayload': rawPayload ?? {},
     };
@@ -71,7 +108,7 @@ class NewOrderAlertManager {
     _syncNotifier();
     debugPrint('[NewOrderAlertManager] New order alert registered: $normalizedId. Active queue: ${_activeOrderIds.length}');
 
-    // 3. Start repeating audio loop if not already running
+    // 4. Start repeating audio loop if not already running
     if (!_isPlaying) {
       _startAlertLoop();
     }
@@ -82,6 +119,8 @@ class NewOrderAlertManager {
   void acknowledgeOrder(String orderId) {
     if (orderId.trim().isEmpty) return;
     final normalizedId = orderId.trim();
+
+    _persistAcknowledgedId(normalizedId);
 
     if (!_activeOrderIds.contains(normalizedId)) {
       // Force stop audio if no active orders remain
@@ -105,6 +144,9 @@ class NewOrderAlertManager {
 
   /// Dismisses all pending new order alerts and immediately silences the alert loop.
   void acknowledgeAll() {
+    for (final id in _activeOrderIds) {
+      _persistAcknowledgedId(id);
+    }
     _activeOrderIds.clear();
     _orderDetails.clear();
     _syncNotifier();
@@ -113,6 +155,7 @@ class NewOrderAlertManager {
   }
 
   /// Alias for acknowledgeOrder
+
   void stopAlert(String orderId) => acknowledgeOrder(orderId);
 
   /// Check whether an alert is currently active for a given orderId.

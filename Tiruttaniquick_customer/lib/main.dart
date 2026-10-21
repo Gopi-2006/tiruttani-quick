@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 
+import 'config/payment_config.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/cart/presentation/cart_provider.dart';
@@ -107,13 +108,20 @@ Future<void> main() async {
     // Apply Firestore offline-persistence settings exactly once, immediately
     // after Firebase core is ready and before any other service (Messaging,
     // NotificationService, etc.) triggers a Firestore read/write.
-    FirestoreService.configure();
-    debugPrint('[Startup Log] Firestore persistence settings configured.');
+    FirestoreService.configure(
+      useEmulator: PaymentConfig.useFirebaseEmulator,
+      emulatorHost: PaymentConfig.firebaseEmulatorHost,
+      emulatorPort: PaymentConfig.firestoreEmulatorPort,
+    );
+    debugPrint('[Startup Log] Firestore persistence configured (emulator: ${PaymentConfig.useFirebaseEmulator}).');
 
-    // Step 4: Register background message handler
+    // Step 4: Eagerly restore user auth session
+    currentUserProvider.init();
+
+    // Step 5: Register background message handler
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-    // Step 5: Initialize NotificationService for foreground handling & channel setup
+    // Step 6: Initialize NotificationService for foreground handling & channel setup
     await NotificationService.instance.initialize(
       onNotificationTap: (payload) {
         debugPrint('[Customer Main] Notification Tapped: $payload');
@@ -216,7 +224,7 @@ class GroceryApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider.value(value: startupProvider),
         ChangeNotifierProvider(create: (_) => SettingsProvider()..init()),
-        ChangeNotifierProvider.value(value: currentUserProvider),
+        ChangeNotifierProvider.value(value: currentUserProvider..init()),
         ChangeNotifierProvider.value(value: serviceAreaProvider),
         // CartProvider is bound to CurrentUserProvider so it self-initialises
         // the moment the auth state resolves, preventing first-login race conditions.

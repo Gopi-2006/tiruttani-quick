@@ -1,19 +1,47 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../config/payment_config.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/widgets/custom_app_bar.dart';
 import '../../../core/widgets/loading_widget.dart';
+import '../../cart/presentation/cart_provider.dart';
 
 class OrderTrackingScreen extends StatelessWidget {
   final String orderId;
 
   const OrderTrackingScreen({super.key, required this.orderId});
+
+  Future<void> _buyAgain(BuildContext context, String orderId) async {
+    try {
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      final cart = context.read<CartProvider>();
+      final items = await FirestoreService().getOrderItems(orderId);
+      if (items.isEmpty) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(content: Text('No items found to reorder')),
+        );
+        return;
+      }
+      cart.addBatch(items);
+      if (context.mounted) {
+        context.go(AppRoutes.cart);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to reorder: $e')),
+        );
+      }
+    }
+  }
 
   Future<void> _launchReviewForm(BuildContext context) async {
     final Uri url = Uri.parse(AppConstants.reviewGoogleFormUrl);
@@ -129,7 +157,10 @@ class OrderTrackingScreen extends StatelessWidget {
                 ),
               );
             }
-            final bool isCancelable = order.status == OrderStatuses.pending ||
+            final bool isCancelable = order.status == OrderStatuses.orderPlaced ||
+                order.status == OrderStatuses.accepted ||
+                order.status == OrderStatuses.packing ||
+                order.status == OrderStatuses.pending ||
                 order.status == OrderStatuses.confirmed ||
                 order.status == OrderStatuses.packed;
 
@@ -153,11 +184,11 @@ class OrderTrackingScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (order.deliveryPersonName != null &&
+                  if (order.status == OrderStatuses.outForDelivery &&
+                      order.deliveryPersonName != null &&
                       order.deliveryPersonName!.trim().isNotEmpty &&
                       order.deliveryPersonPhone != null &&
-                      order.deliveryPersonPhone!.trim().isNotEmpty &&
-                      order.status != OrderStatuses.cancelled) ...[
+                      order.deliveryPersonPhone!.trim().isNotEmpty) ...[
                     _DeliveryPartnerCard(
                       order: order,
                       onCall: () => _callDeliveryPerson(context, order.deliveryPersonPhone!),
@@ -238,14 +269,12 @@ class OrderTrackingScreen extends StatelessWidget {
                       ),
                     ),
                   ],
-                  if (order.status == OrderStatuses.outForDelivery || order.status == OrderStatuses.delivered) ...[
+                  if (order.status == OrderStatuses.outForDelivery &&
+                      order.deliveryOtp != null &&
+                      order.deliveryOtp!.trim().isNotEmpty) ...[
                     Builder(
                       builder: (context) {
-                        final displayOtp = (order.deliveryOtp != null && order.deliveryOtp!.isNotEmpty)
-                            ? order.deliveryOtp!
-                            : order.verificationCode;
-                        if (displayOtp.isEmpty) return const SizedBox.shrink();
-
+                        final displayOtp = order.deliveryOtp!.trim();
                         return Column(
                           children: [
                             const SizedBox(height: AppDimensions.spacingMedium),
@@ -308,6 +337,26 @@ class OrderTrackingScreen extends StatelessWidget {
                   ],
                   if (order.status == OrderStatuses.delivered) ...[
                     const SizedBox(height: AppDimensions.spacingMedium),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _buyAgain(context, order.id),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusNormal),
+                          ),
+                        ),
+                        icon: const Icon(Icons.replay_rounded),
+                        label: const Text(
+                          'Buy Again',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: AppDimensions.spacingMedium),
                     Card(
                       color: AppColors.primary.withValues(alpha: 0.12),
                       shape: RoundedRectangleBorder(
@@ -365,7 +414,12 @@ class OrderTrackingScreen extends StatelessWidget {
                       ),
                     ),
                   ],
-                  const SizedBox(height: AppDimensions.spacingMedium),
+                  if ((order.paymentMethod == 'UPI' || order.paymentMethod == 'Online') &&
+                      order.paymentStatus == PaymentStatuses.pending &&
+                      order.status != OrderStatuses.cancelled) ...[
+                    _PendingOnlinePaymentCard(order: order),
+                    const SizedBox(height: AppDimensions.spacingMedium),
+                  ],
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(AppDimensions.paddingMedium),
@@ -610,9 +664,9 @@ class _StatusStepper extends StatelessWidget {
         ),
         _StepData(
           label: 'Accepted',
-          active: order.confirmedAt != null,
+          active: (order.acceptedAt ?? order.confirmedAt) != null,
           color: Colors.blue,
-          time: _formatTime(order.confirmedAt),
+          time: _formatTime(order.acceptedAt ?? order.confirmedAt),
           icon: Icons.check,
         ),
         _StepData(
@@ -646,7 +700,7 @@ class _StatusStepper extends StatelessWidget {
           label: 'Accepted',
           active: order.statusIndex >= 2,
           color: Colors.blue,
-          time: _formatTime(order.confirmedAt),
+          time: _formatTime(order.acceptedAt ?? order.confirmedAt),
           icon: Icons.check,
         ),
         _StepData(
@@ -923,4 +977,265 @@ class _DeliveryPartnerCard extends StatelessWidget {
   }
 }
 
-  
+class _PendingOnlinePaymentCard extends StatefulWidget {
+  final OrderModel order;
+
+  const _PendingOnlinePaymentCard({required this.order});
+
+  @override
+  State<_PendingOnlinePaymentCard> createState() => _PendingOnlinePaymentCardState();
+}
+
+class _PendingOnlinePaymentCardState extends State<_PendingOnlinePaymentCard> {
+  bool _loading = false;
+
+  Future<void> _completeOnlinePayment() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+
+    try {
+      // 1. If valid existing checkout URL exists, try to launch it directly
+      final existingUrl = widget.order.youpiCheckoutUrl;
+      if (existingUrl != null && existingUrl.isNotEmpty) {
+        final uri = Uri.parse(existingUrl);
+        final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (launched) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Payment portal opened. Status will update once completed.')),
+            );
+          }
+          return;
+        }
+      }
+
+      // 2. Otherwise (or if URL missing/expired), authenticate and request a fresh session
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('Please sign in to complete payment.');
+      }
+
+      final idToken = await user.getIdToken();
+      if (idToken == null || idToken.isEmpty) {
+        throw Exception('Session expired. Please sign in again.');
+      }
+
+      final url = Uri.parse(PaymentConfig.createPaymentSessionUrl);
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $idToken',
+        },
+        body: jsonEncode({'orderId': widget.order.id}),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) {
+        String msg = PaymentConfig.stagingUnavailableMessage;
+        try {
+          final errBody = jsonDecode(response.body);
+          if (errBody is Map && errBody['message'] != null) {
+            msg = errBody['message'] as String;
+          }
+        } catch (_) {}
+        throw Exception(msg);
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final checkoutUrl = data['checkoutUrl'] as String?;
+      if (checkoutUrl == null || checkoutUrl.isEmpty) {
+        throw Exception('Invalid response from payment gateway.');
+      }
+
+      final uri = Uri.parse(checkoutUrl);
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        await launchUrl(uri);
+      }
+    } catch (e) {
+      if (mounted) {
+        final errText = e.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errText),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _switchToCod() async {
+    if (_loading) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Switch to Cash on Delivery?'),
+        content: Text(
+          'Your order of ₹${widget.order.totalPrice.toStringAsFixed(0)} will be delivered with Cash / UPI on Delivery. You can pay cash or scan the delivery QR code upon arrival.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep Online UPI'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Confirm COD'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() => _loading = true);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('Please sign in to update payment method.');
+      }
+
+      final idToken = await user.getIdToken();
+      if (idToken == null || idToken.isEmpty) {
+        throw Exception('Session expired. Please sign in again.');
+      }
+
+      final url = Uri.parse(PaymentConfig.convertOrderToCodUrl);
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $idToken',
+        },
+        body: jsonEncode({'orderId': widget.order.id}),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) {
+        String msg = 'Failed to convert order to Cash on Delivery.';
+        try {
+          final errBody = jsonDecode(response.body);
+          if (errBody is Map && errBody['message'] != null) {
+            msg = errBody['message'] as String;
+          }
+        } catch (_) {}
+        throw Exception(msg);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment method updated to Cash / UPI on Delivery.'),
+            backgroundColor: AppColors.primary,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        final errText = e.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errText),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: Colors.amber.shade50,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusMedium),
+        side: BorderSide(color: Colors.amber.shade300, width: 1.2),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.payment_rounded, color: Colors.amber.shade900, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Online Payment Pending',
+                    style: TextStyle(
+                      fontSize: AppDimensions.fontSizeLarge,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.amber.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Your order is reserved. Please complete the online payment of ₹${widget.order.totalPrice.toStringAsFixed(0)} to confirm delivery, or switch to Cash on Delivery.',
+              style: TextStyle(
+                fontSize: AppDimensions.fontSizeSmall,
+                color: Colors.amber.shade900.withValues(alpha: 0.9),
+              ),
+            ),
+            const SizedBox(height: AppDimensions.spacingMedium),
+            if (_loading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else ...[
+              ElevatedButton.icon(
+                onPressed: _completeOnlinePayment,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppDimensions.borderRadiusNormal),
+                  ),
+                ),
+                icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+                label: const Text(
+                  'Complete Online Payment',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _switchToCod,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.grey.shade800,
+                  side: BorderSide(color: Colors.grey.shade400),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppDimensions.borderRadiusNormal),
+                  ),
+                ),
+                icon: const Icon(Icons.payments_outlined, size: 18),
+                label: const Text('Switch to Cash / UPI on Delivery'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}

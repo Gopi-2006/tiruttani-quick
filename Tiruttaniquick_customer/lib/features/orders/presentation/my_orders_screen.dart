@@ -12,6 +12,7 @@ import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/skeleton_loader.dart';
 import '../../../services/current_user_provider.dart';
 import '../../../widgets/banner_ad_widget.dart';
+import '../../cart/presentation/cart_provider.dart';
 
 class MyOrdersScreen extends StatefulWidget {
   const MyOrdersScreen({super.key});
@@ -78,15 +79,19 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with SingleTickerProvid
 
     // Filter by tab
     if (tabIndex == 1) {
-      // Ongoing: pending, confirmed, packed, out_for_delivery
-      filtered = filtered.where((o) =>
-          o.status != OrderStatuses.delivered && o.status != OrderStatuses.cancelled).toList();
+      // Ongoing
+      filtered = filtered.where((o) {
+        final norm = OrderStatuses.normalize(o.status);
+        return norm != OrderStatuses.delivered && norm != OrderStatuses.cancelled;
+      }).toList();
     } else if (tabIndex == 2) {
       // Delivered
-      filtered = filtered.where((o) => o.status == OrderStatuses.delivered).toList();
+      filtered = filtered.where((o) =>
+          OrderStatuses.normalize(o.status) == OrderStatuses.delivered).toList();
     } else if (tabIndex == 3) {
       // Cancelled
-      filtered = filtered.where((o) => o.status == OrderStatuses.cancelled).toList();
+      filtered = filtered.where((o) =>
+          OrderStatuses.normalize(o.status) == OrderStatuses.cancelled).toList();
     }
 
     // Filter by search query
@@ -310,6 +315,30 @@ class _OrderCard extends StatelessWidget {
     required this.onReview,
   });
 
+  Future<void> _buyAgain(BuildContext context, String orderId) async {
+    try {
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      final cart = context.read<CartProvider>();
+      final items = await FirestoreService().getOrderItems(orderId);
+      if (items.isEmpty) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(content: Text('No items found to reorder')),
+        );
+        return;
+      }
+      cart.addBatch(items);
+      if (context.mounted) {
+        context.go(AppRoutes.cart);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to reorder: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final statusColor = _getStatusTextColor(order.status);
@@ -341,28 +370,33 @@ class _OrderCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Order ID',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF888888),
-                        fontWeight: FontWeight.w500,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Order ID',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF888888),
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      order.orderNumber,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1F2937),
+                      const SizedBox(height: 2),
+                      Text(
+                        order.orderNumber,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1F2937),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Row(
                   children: [
                     Container(
@@ -453,25 +487,35 @@ class _OrderCard extends StatelessWidget {
             ),
 
             // Visual Progress Tracker (if not cancelled)
-            if (order.status != OrderStatuses.cancelled) ...[
+            if (OrderStatuses.normalize(order.status) != OrderStatuses.cancelled) ...[
               const SizedBox(height: 14),
               const Divider(height: 1, color: Color(0xFFF3F4F6)),
               const SizedBox(height: 14),
               _OrderStepProgressTracker(order: order),
             ],
 
-            // Review button if delivered
-            if (order.status == OrderStatuses.delivered) ...[
+            // Review and Buy Again buttons if delivered
+            if (OrderStatuses.normalize(order.status) == OrderStatuses.delivered) ...[
               const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton.icon(
-                    onPressed: onReview,
-                    icon: const Icon(Icons.rate_review_outlined, size: 16),
-                    label: const Text('Review Order', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    onPressed: () => _buyAgain(context, order.id),
+                    icon: const Icon(Icons.replay_rounded, size: 16),
+                    label: const Text('Buy Again', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                     style: TextButton.styleFrom(
                       foregroundColor: AppColors.primary,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: onReview,
+                    icon: const Icon(Icons.rate_review_outlined, size: 16),
+                    label: const Text('Review', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.muted,
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     ),
                   ),
@@ -497,7 +541,7 @@ class _OrderStepProgressTracker extends StatelessWidget {
 
     final steps = [
       _StepInfo('Placed', Icons.local_mall_outlined, order.placedAt),
-      _StepInfo('Confirmed', Icons.shopping_bag_outlined, order.confirmedAt ?? order.placedAt),
+      _StepInfo('Confirmed', Icons.shopping_bag_outlined, order.acceptedAt ?? order.confirmedAt ?? order.placedAt),
       _StepInfo('Out for Delivery', Icons.local_shipping_outlined, order.outForDeliveryAt),
       _StepInfo('Delivered', Icons.check, order.deliveredAt),
     ];
@@ -566,11 +610,11 @@ class _OrderStepProgressTracker extends StatelessWidget {
   }
 
   int _calculateStepIndex(String status) {
-    switch (status) {
-      case OrderStatuses.pending:
+    switch (OrderStatuses.normalize(status)) {
+      case OrderStatuses.orderPlaced:
         return 0;
-      case OrderStatuses.confirmed:
-      case OrderStatuses.packed:
+      case OrderStatuses.accepted:
+      case OrderStatuses.packing:
         return 1;
       case OrderStatuses.outForDelivery:
         return 2;
@@ -591,52 +635,37 @@ class _StepInfo {
 }
 
 Color _getStatusTextColor(String status) {
-  switch (status) {
+  switch (OrderStatuses.normalize(status)) {
     case OrderStatuses.delivered:
       return const Color(0xFF1E7E34); // Green
     case OrderStatuses.outForDelivery:
       return const Color(0xFF0369A1); // Sky blue
     case OrderStatuses.cancelled:
       return const Color(0xFFD32F2F); // Red
-    case OrderStatuses.pending:
-    case OrderStatuses.confirmed:
-    case OrderStatuses.packed:
+    case OrderStatuses.orderPlaced:
+    case OrderStatuses.accepted:
+    case OrderStatuses.packing:
     default:
       return const Color(0xFFD97706); // Amber / Orange
   }
 }
 
 Color _getStatusBgColor(String status) {
-  switch (status) {
+  switch (OrderStatuses.normalize(status)) {
     case OrderStatuses.delivered:
       return const Color(0xFFE8F5E9);
     case OrderStatuses.outForDelivery:
       return const Color(0xFFE0F2FE);
     case OrderStatuses.cancelled:
       return const Color(0xFFFFEBEE);
-    case OrderStatuses.pending:
-    case OrderStatuses.confirmed:
-    case OrderStatuses.packed:
+    case OrderStatuses.orderPlaced:
+    case OrderStatuses.accepted:
+    case OrderStatuses.packing:
     default:
-      return const Color(0xFFFFF8E1);
+      return const Color(0xFFFFFBEB);
   }
 }
 
 String _getDisplayStatus(String status) {
-  switch (status) {
-    case OrderStatuses.delivered:
-      return 'Delivered';
-    case OrderStatuses.outForDelivery:
-      return 'Out for Delivery';
-    case OrderStatuses.cancelled:
-      return 'Cancelled';
-    case OrderStatuses.pending:
-      return 'Processing';
-    case OrderStatuses.confirmed:
-      return 'Confirmed';
-    case OrderStatuses.packed:
-      return 'Packed';
-    default:
-      return status.isNotEmpty ? status[0].toUpperCase() + status.substring(1) : 'Processing';
-  }
+  return OrderStatuses.display(status);
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 
@@ -9,7 +10,6 @@ import '../../../core/widgets/skeleton_loader.dart';
 import '../../../core/widgets/voice_search_dialog.dart';
 import '../../../services/startup_provider.dart';
 import '../../../widgets/banner_ad_widget.dart';
-import '../../products/presentation/product_listing_screen.dart';
 import 'search_filter_bottom_sheet.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -86,8 +86,8 @@ class _SearchScreenState extends State<SearchScreen> {
       _searchError = null;
     });
 
-    // Crisp 250ms debounce for typing responsiveness without lag
-    _searchDebounceTimer = Timer(const Duration(milliseconds: 250), () {
+    // Snappy 150ms debounce for instant typing responsiveness
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 150), () {
       _executeSearch(trimmed);
     });
   }
@@ -111,13 +111,15 @@ class _SearchScreenState extends State<SearchScreen> {
       final startup = context.read<StartupProvider>();
       final firestore = context.read<FirestoreService>();
 
-      List<ProductModel> allProducts = startup.products;
-      List<CategoryModel> categories = startup.categories;
-
-      // Fallback: If startup cache hasn't loaded products yet, fetch directly once
+      List<ProductModel> allProducts = ProductRepository.instance.getCachedProducts();
       if (allProducts.isEmpty) {
-        allProducts = await firestore.fetchProducts();
+        allProducts = await ProductRepository.instance.loadInitialProducts();
       }
+      if (allProducts.isEmpty) {
+        allProducts = startup.products;
+      }
+
+      List<CategoryModel> categories = startup.categories;
       if (categories.isEmpty) {
         final catStream = firestore.categoriesStream();
         categories = await catStream.first.timeout(
@@ -543,8 +545,8 @@ class _SearchScreenState extends State<SearchScreen> {
                   const Icon(Icons.search_off, size: 64, color: AppColors.muted),
                   const SizedBox(height: AppDimensions.spacingMedium),
                   Text(
-                    _query.isNotEmpty
-                        ? 'No products found for "$_query"'
+                    _query.trim().isNotEmpty
+                        ? 'No products found for "${_query.trim()}"'
                         : 'No products match selected filters',
                     style: const TextStyle(
                       fontSize: 17,
@@ -710,7 +712,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 crossAxisCount: 3,
                 crossAxisSpacing: AppDimensions.spacingNormal,
                 mainAxisSpacing: AppDimensions.spacingNormal,
-                childAspectRatio: 1.0,
+                childAspectRatio: 0.72,
               ),
               itemCount: categories.length,
               itemBuilder: (context, index) {
@@ -719,14 +721,8 @@ class _SearchScreenState extends State<SearchScreen> {
                   title: cat.name,
                   categoryImage: cat.categoryImage,
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ProductListingScreen(
-                          categoryId: cat.id,
-                          categoryName: cat.name,
-                        ),
-                      ),
-                    );
+                    _searchFocusNode.unfocus();
+                    context.push('/products/${cat.id}?name=${Uri.encodeComponent(cat.name)}');
                   },
                 );
               },

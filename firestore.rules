@@ -78,7 +78,11 @@ service cloud.firestore {
 
     match /orders/{orderId} {
       allow read: if isSignedIn() && (resource.data.customerId == userId() || isAdmin() || isDeliveryAgent());
-      allow create: if isSignedIn() && request.resource.data.customerId == userId();
+      allow create: if isSignedIn() &&
+                    request.resource.data.customerId == userId() &&
+                    request.resource.data.paymentStatus == 'Pending' &&
+                    (!('paymentUtr' in request.resource.data) || request.resource.data.paymentUtr == null) &&
+                    (!('youpiPaymentId' in request.resource.data) || request.resource.data.youpiPaymentId == null);
       allow update: if isSignedIn() && (isAdmin() || isDeliveryAgent());
       allow delete: if false;
 

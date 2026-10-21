@@ -6,32 +6,20 @@ class PaymentService {
     required int amountPaise,
     required String orderId,
   }) async {
-    if (method == 'UPI' || method == 'Card') {
-      throw Exception('this service is not available for us');
-    }
-
-    String actualMethod = method;
-    if (method == 'UPI') {
-      actualMethod = 'Razorpay';
-    } else if (method == 'Card') {
-      actualMethod = 'Stripe';
-    }
-
-    if (actualMethod == 'COD') {
+    final normalized = method.trim().toUpperCase();
+    if (normalized == 'COD' || normalized == 'CASH ON DELIVERY') {
       return true;
     }
-    else if (actualMethod == 'Razorpay'){
-      await Future.delayed(const Duration(seconds: 2));
+
+    if (normalized == 'UPI' || normalized == 'ONLINE' || normalized == 'PAY ONLINE') {
+      // Online payment is orchestrated securely via server-side session after order reservation
+      return true;
     }
-    else if (actualMethod == 'PayPal'){
-      await Future.delayed(const Duration(seconds: 2));
+
+    if (normalized == 'CARD') {
+      throw Exception('Credit / Debit Card payments are coming soon.');
     }
-    else if (actualMethod == 'Stripe'){
-      await Future.delayed(const Duration(seconds: 2));
-    }
-    else {
-      throw Exception('Unsupported payment method: $method');
-    }
-    return true;
+
+    throw Exception('Unsupported payment method: $method');
   }
 }

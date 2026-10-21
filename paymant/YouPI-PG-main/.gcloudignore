@@ -1,0 +1,16 @@
+.gcloudignore
+.git
+.gitignore
+node_modules/
+**/node_modules/
+data/
+*.log
+.env
+.env.*
+!.env.example
+coverage/
+docs/
+scratch/
+apps/android-observer-app/build/
+apps/android-observer-app/.gradle/
+apps/android-observer-app/app/build/

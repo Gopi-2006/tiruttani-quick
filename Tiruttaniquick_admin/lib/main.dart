@@ -233,19 +233,6 @@ void showOrderDetailsDialog(String orderId) async {
                           body: notifBody,
                           orderId: order.id,
                         );
-
-                        // Dispatch Push Notification via Cloudflare Worker (FCM HTTP v1)
-                        final sent = await NotificationSenderService.instance.sendOrderStatusNotification(
-                          orderId: order.id,
-                          orderNumber: order.orderNumber,
-                          customerId: customerId,
-                          status: status,
-                          deliveryOtp: deliveryOtp,
-                          deliveryPersonName: order.deliveryPersonName,
-                        );
-                        if (!sent) {
-                          debugPrint('[FCM DIAGNOSTICS] Customer push failed for order ${order.id} (main)');
-                        }
                       }
 
                       await firestore.updateOrderStatus(

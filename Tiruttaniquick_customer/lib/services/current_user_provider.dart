@@ -22,22 +22,26 @@ class CurrentUserProvider extends ChangeNotifier {
     }
   }
 
+  static const String _privacyPolicyKey = 'customer_privacy_policy_accepted';
+  final SecureStorageService _storage = SecureStorageService();
+
   User? _firebaseUser;
   UserProfileModel? _profile;
   bool _loading = true;
   StreamSubscription<User?>? _subscription;
   bool _isInitStarted = false;
+  bool privacyPolicyAccepted = false;
 
   /// Completer that resolves once the first auth state has been fully processed.
   /// Splash screen awaits this to avoid navigating before auth is resolved.
   final Completer<void> _initCompleter = Completer<void>();
   Future<void> get initComplete => _initCompleter.future;
 
-  User? get firebaseUser => _firebaseUser;
+  User? get firebaseUser => _firebaseUser ?? _auth?.currentUser;
   UserProfileModel? get profile => _profile;
   bool get loading => _loading;
-  bool get isAuthenticated => _firebaseUser != null;
-  String get role => _profile?.role ?? '';
+  bool get isAuthenticated => (_firebaseUser ?? _auth?.currentUser) != null;
+  String get role => _profile?.role ?? 'customer';
 
   CurrentUserProvider() {
     try {
@@ -50,9 +54,38 @@ class CurrentUserProvider extends ChangeNotifier {
     }
   }
 
-  void init() {
+  Future<void> _loadPrivacyPolicyState() async {
+    try {
+      final val = await _storage.read(_privacyPolicyKey);
+      privacyPolicyAccepted = val == 'true';
+    } catch (e) {
+      debugPrint('[CurrentUserProvider] Error reading privacy policy state: $e');
+    }
+  }
+
+  Future<void> setPrivacyPolicyAccepted(bool accepted) async {
+    privacyPolicyAccepted = accepted;
+    notifyListeners();
+    try {
+      if (accepted) {
+        await _storage.write(_privacyPolicyKey, 'true');
+      } else {
+        await _storage.delete(_privacyPolicyKey);
+      }
+    } catch (e) {
+      debugPrint('[CurrentUserProvider] Error writing privacy policy state: $e');
+    }
+  }
+
+  Future<void> init() async {
     if (_isInitStarted) return;
     _isInitStarted = true;
+
+    // Pre-cache user from Firebase Auth persistence
+    _firebaseUser = _auth?.currentUser;
+
+    // Load privacy policy state
+    await _loadPrivacyPolicyState();
 
     final auth = _auth;
     if (auth == null) {

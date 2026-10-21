@@ -99,6 +99,9 @@ GoogleService-Info.plist
 # Firebase Functions
 functions/node_modules/
 functions/.runtimeconfig.json
+.secret.local
+*.secret.local
+functions/.secret.local
 
 # =========================
 # Node.js
@@ -161,3 +164,4 @@ GoogleService-Info.plist
 build/
 **/build/
 .dart_tool/
+.neon

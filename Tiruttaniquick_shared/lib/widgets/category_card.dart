@@ -53,32 +53,33 @@ class CategoryCard extends StatelessWidget {
                   ? CachedNetworkImage(
                       imageUrl: categoryImage,
                       fit: BoxFit.cover,
+                      alignment: Alignment.center,
                       width: double.infinity,
                       height: double.infinity,
                       fadeInDuration: const Duration(milliseconds: 200),
                       placeholder: (context, url) => const Center(
                         child: SizedBox(
-                          width: 20,
-                          height: 20,
+                          width: 22,
+                          height: 22,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             color: AppColors.primary,
                           ),
                         ),
                       ),
-                      errorWidget: (context, url, error) => const Center(
+                      errorWidget: (context, url, error) => Center(
                         child: Icon(
                           Icons.shopping_bag_outlined,
                           color: AppColors.primary,
-                          size: 26,
+                          size: (size * 0.38).clamp(24.0, 36.0),
                         ),
                       ),
                     )
-                  : const Center(
+                  : Center(
                       child: Icon(
                         Icons.shopping_bag_outlined,
                         color: AppColors.primary,
-                        size: 26,
+                        size: (size * 0.38).clamp(24.0, 36.0),
                       ),
                     ),
             ),
@@ -86,7 +87,7 @@ class CategoryCard extends StatelessWidget {
           const SizedBox(height: AppDimensions.spacingSmall),
           SizedBox(
             width: size + 16,
-            height: 34,
+            height: 36,
             child: Text(
               title,
               maxLines: 2,
@@ -95,7 +96,7 @@ class CategoryCard extends StatelessWidget {
               style: TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 12,
-                height: 1.2,
+                height: 1.25,
                 color: isDark ? AppColors.darkText : AppColors.textPrimary,
               ),
             ),

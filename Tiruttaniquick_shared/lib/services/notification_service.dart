@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../core/constants/order_status.dart';
 import 'new_order_alert_manager.dart';
 
 class NotificationService {
@@ -19,8 +20,16 @@ class NotificationService {
   Map<String, dynamic>? _pendingPayload;
   bool _isInitialized = false;
 
+  final Map<String, DateTime> _recentlyHandledEvents = {};
+
   String? get userId => _userId;
   String? get userRole => _userRole;
+
+  @visibleForTesting
+  void resetRecentEventsForTesting() => _recentlyHandledEvents.clear();
+
+  @visibleForTesting
+  bool isEventRecentlyHandled(String eventId) => _recentlyHandledEvents.containsKey(eventId);
 
   /// Initialize notifications setup: Firebase Cloud Messaging, Local Notifications, and Channels
   Future<void> initialize({
@@ -420,15 +429,101 @@ class NotificationService {
     _handleForegroundMessage(message);
   }
 
+  /// Deduplicate rapid duplicate FCM triggers for the same event
+  bool checkAndRecordEventDeduplication(String? eventId) {
+    if (eventId == null || eventId.isEmpty) return false;
+    final now = DateTime.now();
+    _recentlyHandledEvents.removeWhere((_, time) => now.difference(time).inSeconds > 300);
+
+    if (_recentlyHandledEvents.containsKey(eventId)) {
+      debugPrint('[FCM DIAGNOSTICS] Duplicate foreground notification suppressed for eventId: $eventId');
+      return true;
+    }
+    _recentlyHandledEvents[eventId] = now;
+    return false;
+  }
+
+  /// Calculates deterministic notification ID per order to ensure single card in tray
+  static int calculateNotificationId(String? orderId) {
+    if (orderId != null && orderId.isNotEmpty) {
+      return (orderId.hashCode.abs() % 100000);
+    }
+    return DateTime.now().millisecond;
+  }
+
+  /// Calculates collapse tag per order for Android notification manager
+  static String? calculateCollapseTag(String? orderId) {
+    if (orderId != null && orderId.isNotEmpty) {
+      return 'order_$orderId';
+    }
+    return null;
+  }
+
   /// Local foreground message alerting handler
   void _handleForegroundMessage(RemoteMessage message) {
+    final orderId = message.data['orderId']?.toString() ?? '';
+    final status = message.data['status']?.toString() ?? '';
+    final messageId = message.messageId;
+    final eventId = message.data['eventId']?.toString() ??
+        (orderId.isNotEmpty && status.isNotEmpty ? '${orderId}_$status' : messageId);
+
+    // Deduplicate rapid duplicate FCM triggers for the same event in foreground
+    if (checkAndRecordEventDeduplication(eventId)) {
+      return;
+    }
+
+    // On iOS, if message.notification != null, the OS already presents the banner
+    // due to setForegroundNotificationPresentationOptions(alert: true).
+    // Avoid double presentation on iOS.
+    if (defaultTargetPlatform == TargetPlatform.iOS && message.notification != null) {
+      debugPrint('[FCM DIAGNOSTICS] iOS foreground alert already presented by system; skipping duplicate local display.');
+      return;
+    }
+
     final notification = message.notification;
-    final title = notification?.title ?? message.data['title']?.toString() ?? 'Tiruttani Quick';
-    final body = notification?.body ?? message.data['body']?.toString() ?? '';
+    var title = notification?.title ?? message.data['title']?.toString() ?? '';
+    var body = notification?.body ?? message.data['body']?.toString() ?? '';
+
+    // If body is empty, synthesize based on event type/status to prevent empty notification cards (Bug 2 fix)
+    if (body.trim().isEmpty) {
+      final type = message.data['type']?.toString();
+      final orderNumber = message.data['orderNumber']?.toString() ?? (orderId.isNotEmpty ? orderId : '');
+      final partnerName = message.data['deliveryPersonName']?.toString().trim();
+
+      if (type == 'delivery_partner_assigned' || status == 'delivery_partner_assigned') {
+        title = 'Delivery Partner Assigned';
+        final idPart = orderNumber.isNotEmpty ? ' #$orderNumber' : '';
+        body = (partnerName != null && partnerName.isNotEmpty)
+            ? '$partnerName has been assigned to deliver your order$idPart.'
+            : 'A delivery partner has been assigned to your order$idPart.';
+      } else if (type == 'order_status' && status.isNotEmpty) {
+        final displayStatus = OrderStatuses.display(status);
+        if (title.isEmpty || title == 'Tiruttani Quick') {
+          title = 'Order $displayStatus';
+        }
+        final idPart = orderNumber.isNotEmpty ? ' #$orderNumber' : '';
+        body = 'Your Tiruttani Quick order$idPart is $displayStatus.';
+      } else if (type == 'new_order') {
+        if (title.isEmpty || title == 'Tiruttani Quick') {
+          title = 'New Order Received! 🛒';
+        }
+        final idPart = orderNumber.isNotEmpty ? ' #$orderNumber' : '';
+        body = 'New order$idPart received.';
+      }
+    }
+
+    if (title.trim().isEmpty) {
+      title = 'Tiruttani Quick';
+    }
+
+    // If body is STILL completely empty after synthesis attempt, suppress displaying empty card
+    if (body.trim().isEmpty) {
+      debugPrint('[FCM DIAGNOSTICS] Dropping empty foreground notification for orderId: $orderId');
+      return;
+    }
 
     // If new order alert received in foreground, trigger NewOrderAlertManager repeating alert
     if (message.data['type'] == 'new_order') {
-      final orderId = message.data['orderId']?.toString() ?? '';
       if (orderId.isNotEmpty) {
         NewOrderAlertManager.instance.handleNewOrderReceived(
           orderId: orderId,
@@ -454,7 +549,15 @@ class NotificationService {
     required String body,
     required Map<String, dynamic> payload,
   }) async {
+    final cleanBody = body.trim();
+    if (cleanBody.isEmpty) {
+      debugPrint('[NotificationService] Suppressing local notification with empty body');
+      return;
+    }
+    final cleanTitle = title.trim().isNotEmpty ? title.trim() : 'Tiruttani Quick';
+
     final type = payload['type']?.toString() ?? 'promotion';
+    final orderId = payload['orderId']?.toString() ?? '';
     String channelId = 'promotions_channel';
     String channelName = 'Promotions';
     AndroidNotificationSound? soundResource;
@@ -471,12 +574,18 @@ class NotificationService {
       channelName = 'Admin Alerts';
     }
 
+    // Deterministic notification ID and collapse tag per order to ensure Android OS
+    // updates/replaces rather than stacking duplicate notification shade cards
+    final int notificationId = calculateNotificationId(orderId);
+    final String? collapseTag = calculateCollapseTag(orderId);
+
     final androidDetails = AndroidNotificationDetails(
       channelId,
       channelName,
       importance: Importance.max,
       priority: Priority.high,
       icon: '@mipmap/ic_launcher',
+      tag: collapseTag,
       playSound: true,
       sound: soundResource,
       enableVibration: true,
@@ -497,13 +606,13 @@ class NotificationService {
     try {
       final payloadStr = json.encode(payload);
       await _localNotifications.show(
-        DateTime.now().millisecond,
-        title,
-        body,
+        notificationId,
+        cleanTitle,
+        cleanBody,
         details,
         payload: payloadStr,
       );
-      debugPrint('[FCM DIAGNOSTICS] LOCAL NOTIFICATION SHOWN');
+      debugPrint('[FCM DIAGNOSTICS] LOCAL NOTIFICATION SHOWN: id=$notificationId tag=$collapseTag');
     } catch (e) {
       debugPrint('[FCM DIAGNOSTICS] Error showing local notification: $e');
     }

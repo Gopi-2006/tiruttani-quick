@@ -30,3 +30,7 @@ flutter:
     - assets/
     - assets/sounds/
 
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+

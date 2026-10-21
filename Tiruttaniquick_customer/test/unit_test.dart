@@ -219,16 +219,15 @@ void main() {
       expect(results.length, 5);
     });
 
-    test('2. Single character search "a" matches all products containing "a"', () {
+    test('2. Single character search "a" matches products starting with "a"', () {
       final results = ProductSearchEngine.filterProducts(
         products: sampleProducts,
         rawQuery: 'a',
         categories: sampleCategories,
       );
       expect(results.isNotEmpty, true);
-      // Products with 'a': VIM (in tags/keywords/cat), Urad Dal (in name), Fresh Cow Milk (in tags), Aashirvaad Atta, Fortune Oil
+      // Products with word/name starting with 'a': Aashirvaad Atta
       expect(results.any((p) => p.id == 'p4'), true);
-      expect(results.any((p) => p.id == 'p2'), true);
     });
 
     test('3. Single character search "v" ranks VIM DISHWASH top', () {
@@ -672,7 +671,7 @@ void main() {
         ),
       );
 
-      expect(find.byIcon(Icons.image_not_supported_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.shopping_bag_outlined), findsOneWidget);
     });
 
     testWidgets('AppNetworkImage renders without crashing with valid blurHash on network url', (WidgetTester tester) async {
@@ -699,9 +698,9 @@ void main() {
       final orderOutForDelivery = OrderModel.fromFirestore('o2', {'status': 'out for delivery'});
       final orderDelivered = OrderModel.fromFirestore('o3', {'status': 'DELIVERED '});
 
-      expect(orderPlaced.status, 'pending');
-      expect(orderOutForDelivery.status, 'out_for_delivery');
-      expect(orderDelivered.status, 'delivered');
+      expect(orderPlaced.status, OrderStatuses.orderPlaced);
+      expect(orderOutForDelivery.status, OrderStatuses.outForDelivery);
+      expect(orderDelivered.status, OrderStatuses.delivered);
     });
 
     test('OrderModel.formattedPlacedAt formats DateTime correctly', () {

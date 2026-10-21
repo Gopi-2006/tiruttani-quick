@@ -419,7 +419,7 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.text('Status: delivered'), findsOneWidget);
+      expect(find.text('Status: ${OrderStatuses.delivered}'), findsOneWidget);
       expect(find.byKey(const Key('cancel_button')), findsNothing); // Cancel button must NOT be present
       expect(find.byKey(const Key('feedback_card')), findsOneWidget); // Feedback card must be visible
       expect(find.text('How was your experience?'), findsOneWidget);

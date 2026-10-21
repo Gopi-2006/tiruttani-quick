@@ -8,6 +8,7 @@ export const NOTIFICATION_STATUSES = {
   OUT_FOR_DELIVERY: 'out_for_delivery',
   DELIVERED: 'delivered',
   CANCELLED: 'cancelled',
+  DELIVERY_ASSIGNED: 'delivery_partner_assigned',
   TEST: 'test',
 };
 
@@ -22,13 +23,16 @@ export function normalizeStatus(rawStatus) {
   if (s === 'test') {
     return NOTIFICATION_STATUSES.TEST;
   }
+  if (s.includes('assign') || s === 'delivery_partner_assigned' || s === 'delivery_assigned') {
+    return NOTIFICATION_STATUSES.DELIVERY_ASSIGNED;
+  }
   if (s.includes('accept') || s.includes('confirm') || s === 'accepted' || s === 'confirmed') {
     return NOTIFICATION_STATUSES.ACCEPTED;
   }
   if (s.includes('pack') || s === 'packed') {
     return NOTIFICATION_STATUSES.PACKED;
   }
-  if (s.includes('out') || s.includes('delivery') && !s.includes('delivered') || s === 'out_for_delivery') {
+  if (s.includes('out') || (s.includes('delivery') && !s.includes('delivered')) || s === 'out_for_delivery') {
     return NOTIFICATION_STATUSES.OUT_FOR_DELIVERY;
   }
   if (s.includes('deliver') || s === 'delivered') {
@@ -58,6 +62,15 @@ export function getNotificationContent(statusKey, orderId, orderNumber, delivery
         title: 'Order Packed',
         body: `Your Tiruttani Quick order${idText} has been packed and is ready.`,
       };
+    case NOTIFICATION_STATUSES.DELIVERY_ASSIGNED: {
+      const partnerText = deliveryPersonName && deliveryPersonName.trim().length > 0
+        ? `${deliveryPersonName.trim()} has been assigned to deliver your order${idText}.`
+        : `A delivery partner has been assigned to your order${idText}.`;
+      return {
+        title: 'Delivery Partner Assigned',
+        body: partnerText,
+      };
+    }
     case NOTIFICATION_STATUSES.OUT_FOR_DELIVERY: {
       const partnerText = deliveryPersonName
         ? `${deliveryPersonName} is delivering your order.`
@@ -94,8 +107,10 @@ export function getNotificationContent(statusKey, orderId, orderNumber, delivery
 /**
  * Builds the FCM HTTP v1 JSON message structure for an individual registration token.
  */
-export function buildFcmV1Message({ token, statusKey, orderId, orderNumber, deliveryOtp, deliveryPersonName }) {
+export function buildFcmV1Message({ token, statusKey, orderId, orderNumber, deliveryOtp, deliveryPersonName, eventId }) {
   const content = getNotificationContent(statusKey, orderId, orderNumber, deliveryOtp, deliveryPersonName);
+  const collapseTag = `order_${orderId || orderNumber}`;
+  const logicalEventId = eventId || `order_status_${orderId}_${statusKey}`;
 
   return {
     message: {
@@ -112,12 +127,16 @@ export function buildFcmV1Message({ token, statusKey, orderId, orderNumber, deli
         deliveryOtp: String(deliveryOtp || ''),
         deliveryPersonName: String(deliveryPersonName || ''),
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        tag: collapseTag,
+        eventId: logicalEventId,
       },
       android: {
         priority: 'HIGH',
+        collapse_key: collapseTag,
         notification: {
           channel_id: 'tq_order_status_v4',
           sound: 'default',
+          tag: collapseTag,
           click_action: 'FLUTTER_NOTIFICATION_CLICK',
           default_sound: true,
           default_vibrate_timings: true,
@@ -129,6 +148,7 @@ export function buildFcmV1Message({ token, statusKey, orderId, orderNumber, deli
           aps: {
             sound: 'default',
             badge: 1,
+            threadId: collapseTag,
           },
         },
       },

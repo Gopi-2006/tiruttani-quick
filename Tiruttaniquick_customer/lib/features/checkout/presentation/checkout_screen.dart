@@ -1,9 +1,14 @@
+import 'dart:convert';
 import 'dart:math';
+import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:tiruttaniquick_shared/tiruttaniquick_shared.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+
+import '../../../config/payment_config.dart';
 
 import '../../../core/widgets/custom_app_bar.dart';
 import '../../../core/widgets/custom_button.dart';
@@ -28,6 +33,7 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
+  static const String _prefDeliverySlotKey = 'tq_preferred_delivery_slot';
   final _formKey = GlobalKey<FormState>();
   final _addressController = TextEditingController();
   final _landmarkController = TextEditingController();
@@ -41,16 +47,35 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _loading = false;
   bool _showSuccessOverlay = false;
   String? _successOrderId;
+  String? _checkoutAttemptOrderId;
 
   @override
   void initState() {
     super.initState();
+    _loadPreferredSlot();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final profile = context.read<CurrentUserProvider>().profile;
       if (profile != null && profile.phone.isNotEmpty) {
         _phoneController.text = profile.phone;
       }
     });
+  }
+
+  Future<void> _loadPreferredSlot() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(_prefDeliverySlotKey);
+      if (saved != null && mounted) {
+        setState(() => _selectedDeliverySlot = saved);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _savePreferredSlot(String slot) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefDeliverySlotKey, slot);
+    } catch (_) {}
   }
 
   @override
@@ -154,6 +179,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                       builder: (context, addressSnapshot) {
                                         final addresses = addressSnapshot.data ?? [];
                                         if (addresses.isEmpty) return const Text(Messages.noSavedAddresses);
+
+                                        // Auto-select default or first address on initial load
+                                        if (_selectedAddressId == null && _addressController.text.trim().isEmpty && addresses.isNotEmpty) {
+                                          final defaultAddr = addresses.firstWhere(
+                                            (a) => a.isDefault,
+                                            orElse: () => addresses.first,
+                                          );
+                                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                                            if (mounted && _selectedAddressId == null && _addressController.text.trim().isEmpty) {
+                                              setState(() {
+                                                _selectedAddressId = defaultAddr.id;
+                                                _addressController.text = defaultAddr.fullAddress;
+                                                _landmarkController.text = defaultAddr.landmark;
+                                                _pincodeController.text = defaultAddr.pincode;
+                                                _phoneController.text = defaultAddr.phone;
+                                              });
+                                            }
+                                          });
+                                        }
+
                                         return Column(
                                           children: addresses.map((address) {
                                             return InkWell(
@@ -256,6 +301,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                           setState(() {
                                             _selectedDeliverySlot = val;
                                           });
+                                          _savePreferredSlot(val);
                                         }
                                       },
                                     ),
@@ -276,10 +322,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                       groupValue: _paymentMethod,
                                       onChanged: _setPayment,
                                       child: Column(
-                                        children: const [
-                                          _PaymentOption(value: PaymentMethods.upi),
-                                          _PaymentOption(value: PaymentMethods.card),
-                                          _PaymentOption(value: PaymentMethods.cod),
+                                        children: [
+                                          _PaymentOption(
+                                            value: PaymentMethods.cod,
+                                            isSelected: _paymentMethod == PaymentMethods.cod,
+                                          ),
+                                          _PaymentOption(
+                                            value: PaymentMethods.upi,
+                                            isSelected: _paymentMethod == PaymentMethods.upi,
+                                          ),
+                                          _PaymentOption(
+                                            value: PaymentMethods.card,
+                                            isSelected: _paymentMethod == PaymentMethods.card,
+                                          ),
                                         ],
                                       ),
                                     ),
@@ -310,7 +365,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             const SizedBox(height: AppDimensions.spacingLarge),
                             CustomButton(
                               onPressed: (_loading || !isDeliveryAvailable) ? null : _placeOrder,
-                              text: isDeliveryAvailable ? ButtonTexts.placeOrder : 'Delivery Unavailable',
+                              text: !isDeliveryAvailable
+                                  ? 'Delivery Unavailable'
+                                  : (_paymentMethod == PaymentMethods.upi ? 'Pay Now' : ButtonTexts.placeOrder),
                               loading: _loading,
                             ),
                           ],
@@ -356,25 +413,30 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (e is FirebaseException) {
       switch (e.code) {
         case 'unavailable':
+          return 'Our order service is temporarily busy. Please wait a moment and try again.';
         case 'deadline-exceeded':
-          return 'Unable to place your order right now. '
-              'Please check your internet connection and try again.';
+          return 'The order request timed out. Please check your network and orders page before retrying.';
         case 'permission-denied':
-          return 'Order placement failed due to a permission issue. '
-              'Please log out and log in again.';
+          return 'Order placement failed due to an authorization issue. Please log out and log in again.';
         case 'unauthenticated':
           return 'You must be logged in to place an order.';
         case 'already-exists':
-          return 'This order may have already been placed. '
-              'Please check your orders before trying again.';
+          return 'This order may have already been placed. Please check your orders before trying again.';
         case 'invalid-argument':
           return 'There was a problem with your order details. Please try again.';
         default:
-          return 'Unable to place your order. Please try again.';
+          return 'Unable to place your order (${e.code}). Please try again.';
       }
     }
-    // App-logic exceptions are already user-friendly (stock, delivery, etc.)
     final raw = e.toString();
+    if (raw.contains('SocketException') ||
+        raw.contains('ClientException') ||
+        raw.contains('network-request-failed') ||
+        raw.contains('network_error') ||
+        raw.contains('Failed host lookup')) {
+      return 'Unable to connect to the server. Please check your internet connection and try again.';
+    }
+    // App-logic exceptions are already user-friendly (stock, delivery, etc.)
     return raw.startsWith('Exception: ') ? raw.substring(11) : raw;
   }
 
@@ -382,7 +444,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   void _setPayment(String? value) {
     if (value == null) return;
-    if (value != PaymentMethods.cod) {
+    if (value == PaymentMethods.upi) {
+      if (!PaymentConfig.isStagingOnlineUpiEnabled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Online payment is coming soon. Please choose Cash / UPI on Delivery.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        setState(() => _paymentMethod = PaymentMethods.cod);
+        return;
+      }
+    } else if (value != PaymentMethods.cod) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Online payment is coming soon. Please choose Cash / UPI on Delivery.'),
@@ -416,6 +489,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _placeOrder() async {
+    if (_loading) return;
+
+    if (!ConnectivityProvider.instance.isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No internet connection. Please check your network and try again.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) return;
 
     final pincodeText = _pincodeController.text.trim();
@@ -435,7 +520,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final currentUser = context.read<CurrentUserProvider>();
     final cartProvider = context.read<CartProvider>();
     final user = currentUser.firebaseUser;
-    if (user == null || cartProvider.items.isEmpty) return;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You must be logged in to place an order.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+    if (cartProvider.items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Your cart is empty. Please add items to checkout.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
 
     setState(() => _loading = true);
 
@@ -484,21 +586,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
 
       final db = FirebaseFirestore.instance;
-      final orderRef = db.collection('orders').doc();
+      // Guarantee idempotency across retries: generate once per checkout session
+      _checkoutAttemptOrderId ??= db.collection('orders').doc().id;
+      final orderRef = db.collection('orders').doc(_checkoutAttemptOrderId);
       final now = DateTime.now();
       final ms = now.millisecond.toString().padLeft(3, '0');
       final docEntropy = orderRef.id.length >= 4 
           ? orderRef.id.substring(orderRef.id.length - 4).toUpperCase() 
           : (1000 + Random.secure().nextInt(9000)).toString();
       final orderNumber = 'TQ${now.year.toString().substring(2)}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}$ms$docEntropy';
-      final subtotal = cartProvider.subtotal;
-      final deliveryFee = cartProvider.deliveryFee;
-      final total = cartProvider.total;
       final notes = 'Slot: $_selectedDeliverySlot${cartProvider.couponCode.isNotEmpty ? ' | Coupon: ${cartProvider.couponCode}' : ''}';
       String deliveryAddressId;
 
       int totalProductsSold = 0;
       double totalDiscountAmount = 0.0;
+      double finalAuthoritativeTotal = cartProvider.total;
+      double finalAuthoritativeSubtotal = cartProvider.subtotal;
 
       // Fetch active customer FCM token to store directly with order for guaranteed delivery
       final customerFcmToken = await NotificationService.instance.getFCMToken();
@@ -524,6 +627,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
         try {
           await db.runTransaction((transaction) async {
+            // Idempotency: If previous attempt actually committed before a client timeout, reuse it safely
+            final existingOrderDoc = await transaction.get(orderRef);
+            if (existingOrderDoc.exists) {
+              debugPrint('[ORDER_CREATE] Order ${orderRef.id} already exists in Firestore. Reusing committed order.');
+              final data = existingOrderDoc.data() ?? {};
+              finalAuthoritativeTotal = (data['totalPrice'] as num?)?.toDouble() ?? cartProvider.total;
+              finalAuthoritativeSubtotal = (data['subtotal'] as num?)?.toDouble() ?? cartProvider.subtotal;
+              return;
+            }
+
             // 2. Race condition protection: In-transaction atomic verification of delivery availability
             final settingsDocRef = db.collection('shop_settings').doc('config');
             final settingsDoc = await transaction.get(settingsDocRef);
@@ -584,34 +697,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               deliveryAddressId = addressRef.id;
             }
 
-            final order = OrderModel(
-              id: orderRef.id,
-              orderNumber: orderNumber,
-              customerId: user.uid,
-              deliveryAddressId: deliveryAddressId,
-              subtotal: subtotal,
-              deliveryFee: deliveryFee,
-              totalPrice: total,
-              paymentMethod: _paymentMethod,
-              paymentStatus: _paymentMethod == PaymentMethods.cod ? PaymentStatuses.pending : PaymentStatuses.paid,
-              status: OrderStatuses.pending,
-              statusIndex: OrderStatuses.index(OrderStatuses.pending),
-              eta: now.add(const Duration(minutes: 30)),
-              notes: notes,
-              verificationCode: Helpers.generateVerificationCode(),
-              customerFcmToken: customerFcmToken,
-            );
-
-            transaction.set(orderRef, order.toMap());
+            // Authoritative in-transaction pricing and stock deduction
+            double calculatedSubtotal = 0.0;
+            final List<OrderItemModel> orderItemsToWrite = [];
 
             for (int i = 0; i < cartProvider.items.length; i++) {
               final item = cartProvider.items.elementAt(i);
               final productSnapshot = productSnapshots[i];
+              if (!productSnapshot.exists) {
+                final cachedProduct = cartProvider.getProduct(item.productId);
+                throw Exception('Product "${cachedProduct?.name ?? item.productId}" is no longer available');
+              }
               final productData = productSnapshot.data() as Map<String, dynamic>? ?? {};
               
               final bool variantsEnabled = productData['variantsEnabled'] as bool? ?? false;
-              final productRef = db.collection('products').doc(item.productId);
               
+              double unitPrice = 0.0;
               double purchasePrice = 0.0;
               double mrpVal = 0.0;
 
@@ -628,53 +729,78 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 
                 final variant = variantsList[variantIndex];
                 final int currentStock = variant['stockQuantity'] as int? ?? 0;
+                unitPrice = (variant['price'] as num?)?.toDouble() ?? item.unitPrice;
                 purchasePrice = (variant['purchasePrice'] as num?)?.toDouble() ?? 0.0;
-                mrpVal = (variant['mrp'] as num?)?.toDouble() ?? (variant['price'] as num?)?.toDouble() ?? 0.0;
+                mrpVal = (variant['mrp'] as num?)?.toDouble() ?? unitPrice;
                 
                 if (currentStock < item.quantity) {
                   throw Exception('${productData['name'] ?? 'Product'} (${variant['name']}) is out of stock');
                 }
-                
-                variant['stockQuantity'] = currentStock - item.quantity;
-                if (variant['stockQuantity'] <= 0) {
-                  variant['status'] = 'Out of Stock';
-                }
-                
-                transaction.update(productRef, {'variants': variantsList});
+                // Server-side Cloud Function onOrderCreated atomically decrements inventory with Admin privileges
               } else {
                 final int stock = productData['stockQuantity'] as int? ?? 0;
+                unitPrice = (productData['price'] as num?)?.toDouble() ?? item.unitPrice;
                 purchasePrice = (productData['purchasePrice'] as num?)?.toDouble() ?? 0.0;
-                mrpVal = (productData['mrp'] as num?)?.toDouble() ?? (productData['price'] as num?)?.toDouble() ?? 0.0;
+                mrpVal = (productData['mrp'] as num?)?.toDouble() ?? unitPrice;
 
                 if (stock < item.quantity) {
                   throw Exception('${productData['name'] ?? 'Product'} is out of stock');
                 }
-
-                transaction.update(productRef, {
-                  'stockQuantity': FieldValue.increment(-item.quantity),
-                });
+                // Server-side Cloud Function onOrderCreated atomically decrements inventory with Admin privileges
               }
 
-              final itemDiscount = (mrpVal > item.unitPrice) ? (mrpVal - item.unitPrice) : 0.0;
+              calculatedSubtotal += unitPrice * item.quantity;
+              final itemDiscount = (mrpVal > unitPrice) ? (mrpVal - unitPrice) : 0.0;
               totalDiscountAmount += itemDiscount * item.quantity;
               totalProductsSold += item.quantity;
 
               final String orderItemDocId = item.variantId.isNotEmpty ? '${item.productId}_${item.variantId}' : item.productId;
-
-              transaction.set(
-                orderRef.collection('order_items').doc(orderItemDocId),
+              orderItemsToWrite.add(
                 OrderItemModel(
                   id: orderItemDocId,
                   orderId: orderRef.id,
                   productId: item.productId,
-                  productName: productData['name'] as String? ?? 'Product',
-                  unitPrice: item.unitPrice,
+                  productName: productData['name'] as String? ?? (cartProvider.getProduct(item.productId)?.name ?? 'Item'),
+                  unitPrice: unitPrice,
                   quantity: item.quantity,
                   variantId: item.variantId,
                   variantName: item.variantName,
                   selectedWeight: item.selectedWeight,
                   purchasePrice: purchasePrice,
-                ).toMap(),
+                ),
+              );
+            }
+
+            final double couponDiscount = cartProvider.couponDiscount.clamp(0.0, calculatedSubtotal);
+            final double deliveryFee = cartProvider.deliveryFee;
+            final double calculatedTotal = (calculatedSubtotal - couponDiscount + deliveryFee).clamp(0.0, double.infinity);
+            finalAuthoritativeSubtotal = calculatedSubtotal;
+            finalAuthoritativeTotal = calculatedTotal;
+
+            final order = OrderModel(
+              id: orderRef.id,
+              orderNumber: orderNumber,
+              customerId: user.uid,
+              deliveryAddressId: deliveryAddressId,
+              subtotal: calculatedSubtotal,
+              deliveryFee: deliveryFee,
+              totalPrice: calculatedTotal,
+              paymentMethod: _paymentMethod,
+              paymentStatus: PaymentStatuses.pending,
+              status: OrderStatuses.orderPlaced,
+              statusIndex: OrderStatuses.index(OrderStatuses.orderPlaced),
+              eta: now.add(const Duration(minutes: 30)),
+              notes: notes,
+              verificationCode: Helpers.generateVerificationCode(),
+              customerFcmToken: customerFcmToken,
+            );
+
+            transaction.set(orderRef, order.toMap());
+
+            for (final orderItem in orderItemsToWrite) {
+              transaction.set(
+                orderRef.collection('order_items').doc(orderItem.id),
+                orderItem.toMap(),
               );
             }
 
@@ -685,6 +811,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
           debugPrint('[ORDER_CREATE] FIRESTORE_WRITE_SUCCESS orderId=${orderRef.id}');
           lastOrderError = null;
+          _checkoutAttemptOrderId = null; // Reset on successful commit
           break; // ✅ Transaction committed — exit retry loop
 
         } on FirebaseException catch (fe) {
@@ -722,7 +849,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         final bannerId = cartProvider.bannerIdClicked!;
         await FirestoreService().recordBannerConversion(
           bannerId,
-          revenue: subtotal,
+          revenue: finalAuthoritativeSubtotal,
           productsSold: totalProductsSold,
           discountGiven: totalDiscountAmount,
         ).catchError((err) {
@@ -733,27 +860,116 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
 
       await cartProvider.clear();
-      final admins = await _firestore.getAdmins();
-      final customerName = currentUser.profile?.name ?? 'Customer';
-      for (final admin in admins) {
-        await _firestore.createNotification(
-          userId: admin['id'] as String,
-          title: 'New Order Received',
-          body: 'Order #$orderNumber worth ₹${total.toStringAsFixed(0)} placed by $customerName',
-          orderId: orderRef.id,
-        );
+      try {
+        final admins = await _firestore.getAdmins();
+        final customerName = currentUser.profile?.name ?? 'Customer';
+        for (final admin in admins) {
+          await _firestore.createNotification(
+            userId: admin['id'] as String,
+            title: 'New Order Received',
+            body: 'Order #$orderNumber worth ₹${finalAuthoritativeTotal.toStringAsFixed(0)} placed by $customerName',
+            orderId: orderRef.id,
+          );
+        }
+      } catch (adminNotifErr) {
+        debugPrint('[ORDER_CREATE] Admin in-app notification skipped (handled by Cloud Function onOrderCreated): $adminNotifErr');
       }
 
-      // Dispatch Push Notification to all Admin devices via Cloudflare Worker (FCM HTTP v1)
-      NotificationSenderService.instance.sendNewOrderNotificationToAdmins(
-        orderId: orderRef.id,
-        orderNumber: orderNumber,
-        totalAmount: total,
-        customerName: customerName,
-        customerId: user.uid,
-      );
+      // Authoritative Push Notification:
+      // Firebase Cloud Function `onOrderCreated` triggers on Firestore order creation
+      // and dispatches at-most-once FCM to admin devices with server-side transactional idempotency.
 
       if (!mounted) return;
+
+      if (_paymentMethod == PaymentMethods.upi) {
+        // Online UPI Flow (Available ONLY in explicit Staging configuration)
+        if (!PaymentConfig.isStagingOnlineUpiEnabled) {
+          throw Exception('Online UPI is disabled in this environment.');
+        }
+
+        final idToken = await user.getIdToken();
+        if (idToken == null || idToken.isEmpty) {
+          throw Exception('Unable to authenticate payment session request. Please log in again.');
+        }
+
+        final url = Uri.parse(PaymentConfig.createPaymentSessionUrl);
+        http.Response? response;
+        try {
+          final idempotencyKey = 'idemp_${orderRef.id}_${DateTime.now().millisecondsSinceEpoch}';
+          debugPrint('[ONLINE_PAYMENT] Requesting session from $url for orderId=${orderRef.id}');
+          response = await http.post(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $idToken',
+            },
+            body: jsonEncode({
+              'orderId': orderRef.id,
+              'idempotencyKey': idempotencyKey,
+            }),
+          ).timeout(const Duration(seconds: 15));
+        } catch (netErr) {
+          debugPrint('[ONLINE_PAYMENT] Staging backend unreachable or timed out: $netErr');
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(PaymentConfig.stagingUnavailableMessage),
+              backgroundColor: AppColors.error,
+              duration: Duration(seconds: 5),
+            ),
+          );
+          // Navigate to order tracking — order exists in Pending payment status
+          context.go('${AppRoutes.myOrders}/${orderRef.id}');
+          return;
+        }
+
+        if (response.statusCode != 200) {
+          debugPrint('[ONLINE_PAYMENT] Staging backend returned status ${response.statusCode}: ${response.body}');
+          String errorMsg = PaymentConfig.stagingUnavailableMessage;
+          try {
+            final errBody = jsonDecode(response.body);
+            if (errBody is Map && errBody['message'] != null) {
+              errorMsg = errBody['message'] as String;
+            }
+          } catch (_) {}
+
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMsg),
+              backgroundColor: AppColors.error,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+          context.go('${AppRoutes.myOrders}/${orderRef.id}');
+          return;
+        }
+
+        final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+        final checkoutUrl = responseData['checkoutUrl'] as String?;
+
+        if (checkoutUrl != null && checkoutUrl.isNotEmpty) {
+          debugPrint('[ONLINE_PAYMENT] Launching checkout URL: $checkoutUrl');
+          final Uri checkoutUri = Uri.parse(checkoutUrl);
+          try {
+            final launched = await launchUrl(checkoutUri, mode: LaunchMode.externalApplication);
+            if (!launched) {
+              await launchUrl(checkoutUri);
+            }
+          } catch (launchErr) {
+            debugPrint('[ONLINE_PAYMENT] Could not open checkout URL: $launchErr');
+          }
+        }
+
+        // Customer is redirected to My Orders / Tracking screen.
+        // The app NEVER marks the order as Paid.
+        // Real-time Firestore stream on order_tracking_screen will reflect
+        // payment status once server-side webhook receives and validates payment.
+        if (!mounted) return;
+        context.go('${AppRoutes.myOrders}/${orderRef.id}');
+        return;
+      }
+
       setState(() {
         _showSuccessOverlay = true;
         _successOrderId = orderRef.id;
@@ -782,23 +998,75 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
 class _PaymentOption extends StatelessWidget {
   final String value;
+  final bool isSelected;
 
-  const _PaymentOption({required this.value});
+  const _PaymentOption({
+    required this.value,
+    this.isSelected = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     String label = value;
+    String? subtitle;
+    bool isSelectable = true;
+
     if (value == PaymentMethods.cod) {
       label = 'Cash / UPI on Delivery';
+      subtitle = 'Pay with cash or scan delivery QR code upon arrival';
     } else if (value == PaymentMethods.upi) {
-      label = 'Online UPI (Coming Soon)';
+      label = 'Pay Online';
+      subtitle = 'Pay securely using UPI through our payment checkout.';
+      if (!PaymentConfig.isStagingOnlineUpiEnabled) {
+        isSelectable = false;
+      }
     } else if (value == PaymentMethods.card) {
       label = 'Credit / Debit Card (Coming Soon)';
+      subtitle = 'Visa, Mastercard, RuPay';
+      isSelectable = false;
     }
 
     return RadioListTile<String>(
       contentPadding: EdgeInsets.zero,
-      title: Text(label),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: isSelectable ? AppColors.text : AppColors.muted,
+              ),
+            ),
+          ),
+          if (value == PaymentMethods.upi && PaymentConfig.isStagingOnlineUpiEnabled)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade100,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.amber.shade800, width: 0.8),
+              ),
+              child: Text(
+                'STAGING',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.amber.shade900,
+                ),
+              ),
+            ),
+        ],
+      ),
+      subtitle: subtitle != null
+          ? Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 12,
+                color: isSelectable ? AppColors.muted : AppColors.muted.withValues(alpha: 0.6),
+              ),
+            )
+          : null,
       value: value,
     );
   }

@@ -15,10 +15,12 @@ import '../../features/service_area/location_check_screen.dart';
 import '../../features/service_area/service_unavailable_screen.dart';
 import '../../services/current_user_provider.dart';
 import '../../services/service_area_provider.dart';
+import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/profile/presentation/settings_screen.dart';
 import '../../features/profile/presentation/account_deletion_screen.dart';
 import '../../features/splash/presentation/splash_screen.dart';
 import '../../features/onboarding/presentation/onboarding_screen.dart';
+import '../../features/search/presentation/search_screen.dart';
 
 CustomTransitionPage<T> buildPageWithTransition<T>({
   required BuildContext context,
@@ -65,17 +67,13 @@ final router = GoRouter(
 
     final targetRedirect = () {
       if (!currentUser.isAuthenticated) {
-        if (location == AppRoutes.home ||
+        if (location == AppRoutes.login ||
+            location == AppRoutes.signUp ||
+            location == AppRoutes.otp ||
             location == AppRoutes.onboarding ||
             location == '/location-check' ||
             location == '/service-unavailable' ||
-            location == '/settings' ||
-            location == '/search' ||
-            location.startsWith('/products/') ||
-            location.startsWith('/product/') ||
-            location == AppRoutes.login ||
-            location == AppRoutes.signUp ||
-            location == AppRoutes.otp) {
+            location == '/settings') {
           return null;
         }
         return AppRoutes.login;
@@ -170,7 +168,7 @@ final router = GoRouter(
       pageBuilder: (context, state) => buildPageWithTransition(
         context: context,
         state: state,
-        child: const HomeScreen(initialTab: 1),
+        child: const SearchScreen(),
       ),
     ),
     GoRoute(
@@ -212,7 +210,7 @@ final router = GoRouter(
       pageBuilder: (context, state) => buildPageWithTransition(
         context: context,
         state: state,
-        child: const HomeScreen(initialTab: 2),
+        child: const HomeScreen(initialTab: 4),
       ),
     ),
     GoRoute(
@@ -244,7 +242,7 @@ final router = GoRouter(
       pageBuilder: (context, state) => buildPageWithTransition(
         context: context,
         state: state,
-        child: const HomeScreen(initialTab: 4),
+        child: const ProfileScreen(),
       ),
     ),
     GoRoute(

@@ -6,6 +6,7 @@ import '../models/address_model.dart';
 import '../models/cart_item_model.dart';
 import '../models/category_model.dart';
 import '../models/order_model.dart';
+import '../models/order_item_model.dart';
 import '../models/product_model.dart';
 import '../models/banner_model.dart';
 import '../models/offer_model.dart';
@@ -31,10 +32,21 @@ class FirestoreService {
   /// multiple times (checkout screen, startup provider, DI provider), which
   /// could disrupt the SDK's internal gRPC channel on Android and produce a
   /// transient `cloud_firestore/unavailable` error.
-  static void configure() {
+  static void configure({
+    bool useEmulator = false,
+    String emulatorHost = '127.0.0.1',
+    int emulatorPort = 8080,
+  }) {
     if (_settingsConfigured) return;
     _settingsConfigured = true;
     try {
+      if (useEmulator) {
+        FirebaseFirestore.instance.useFirestoreEmulator(
+          emulatorHost,
+          emulatorPort,
+          automaticHostMapping: false,
+        );
+      }
       FirebaseFirestore.instance.settings = const Settings(
         persistenceEnabled: true,
         cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
@@ -106,11 +118,10 @@ class FirestoreService {
       final filtered = ProductSearchEngine.filterProducts(
         products: products,
         rawQuery: normalizedQuery,
+        includeInactive: includeInactive,
       );
 
-      final resultList = List<ProductModel>.from(filtered);
-      resultList.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-      return resultList;
+      return List<ProductModel>.from(filtered);
     });
   }
 
@@ -194,7 +205,7 @@ class FirestoreService {
     });
   }
 
-  Stream<List<OrderModel>> adminOrdersStream({int limit = 200}) {
+  Stream<List<OrderModel>> adminOrdersStream({int limit = 100}) {
     return _db
         .collection('orders')
         .limit(limit)
@@ -268,14 +279,41 @@ class FirestoreService {
     required String orderId,
     required String status,
     Map<String, dynamic> extra = const {},
+    String? updatedBy,
   }) async {
-    await _db.collection('orders').doc(orderId).update({
-      'status': status,
-      'statusIndex': OrderStatuses.index(status),
+    final canonicalStatus = OrderStatuses.normalize(status);
+    final Map<String, dynamic> updates = {
+      'status': canonicalStatus,
+      'statusIndex': OrderStatuses.index(canonicalStatus),
       ...extra,
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+    };
+    if (updatedBy != null && updatedBy.isNotEmpty) {
+      updates['updatedBy'] = updatedBy;
+    }
+    // Record status-specific timestamps automatically if not already in extra
+    if (canonicalStatus == OrderStatuses.accepted && !updates.containsKey('acceptedAt') && !updates.containsKey('confirmedAt')) {
+      updates['acceptedAt'] = FieldValue.serverTimestamp();
+      updates['confirmedAt'] = FieldValue.serverTimestamp();
+    } else if (canonicalStatus == OrderStatuses.packing && !updates.containsKey('packedAt')) {
+      updates['packedAt'] = FieldValue.serverTimestamp();
+    } else if (canonicalStatus == OrderStatuses.outForDelivery && !updates.containsKey('outForDeliveryAt')) {
+      updates['outForDeliveryAt'] = FieldValue.serverTimestamp();
+    } else if (canonicalStatus == OrderStatuses.delivered && !updates.containsKey('deliveredAt')) {
+      updates['deliveredAt'] = FieldValue.serverTimestamp();
+    } else if (canonicalStatus == OrderStatuses.cancelled && !updates.containsKey('cancelledAt')) {
+      updates['cancelledAt'] = FieldValue.serverTimestamp();
+    }
+
+    await _db.collection('orders').doc(orderId).update(updates);
   }
+
+  /// Fetches items for an order (used by "Buy Again" and details display)
+  Future<List<OrderItemModel>> getOrderItems(String orderId) async {
+    final snap = await _db.collection('orders').doc(orderId).collection('order_items').get();
+    return snap.docs.map((doc) => OrderItemModel.fromFirestore(doc.id, doc.data())).toList();
+  }
+
 
   /// Assign or update delivery person details for an order (Admin only)
   Future<void> assignDeliveryPerson({
@@ -327,6 +365,12 @@ class FirestoreService {
     return _db.collection('products').doc(productId).snapshots().map((doc) {
       return ProductModel.fromFirestore(doc.id, doc.data() ?? {});
     });
+  }
+
+  Future<ProductModel?> getProduct(String productId) async {
+    final doc = await _db.collection('products').doc(productId).get();
+    if (!doc.exists || doc.data() == null) return null;
+    return ProductModel.fromFirestore(doc.id, doc.data()!);
   }
 
   Future<void> cancelOrder({

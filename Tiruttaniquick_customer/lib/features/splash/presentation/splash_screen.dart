@@ -202,11 +202,20 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         return;
       }
 
-      context.go(AppRoutes.home);
+      // Branch based on persistent authentication state
+      if (currentUserProvider.isAuthenticated) {
+        context.go(AppRoutes.home);
+      } else {
+        context.go(AppRoutes.login);
+      }
     } catch (e) {
       debugPrint('[Splash] Navigation error: $e');
       if (mounted) {
-        context.go(AppRoutes.home);
+        if (currentUserProvider.isAuthenticated) {
+          context.go(AppRoutes.home);
+        } else {
+          context.go(AppRoutes.login);
+        }
       }
     }
   }

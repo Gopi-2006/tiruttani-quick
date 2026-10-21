@@ -664,12 +664,6 @@ class _OrderReportsTabState extends State<OrderReportsTab> {
                   }
                 }
 
-                await widget.firestore.updateOrderStatus(
-                  orderId: order.id,
-                  status: status,
-                  extra: extra,
-                );
-
                 if (order.customerId.isNotEmpty) {
                   final notifTitle = status == OrderStatuses.outForDelivery
                       ? 'Out for Delivery 🚚'
@@ -688,19 +682,13 @@ class _OrderReportsTabState extends State<OrderReportsTab> {
                     body: notifBody,
                     orderId: order.id,
                   );
-
-                  final sent = await NotificationSenderService.instance.sendOrderStatusNotification(
-                    orderId: order.id,
-                    orderNumber: order.orderNumber,
-                    customerId: order.customerId,
-                    status: status,
-                    deliveryOtp: deliveryOtp,
-                    deliveryPersonName: order.deliveryPersonName,
-                  );
-                  if (!sent) {
-                    debugPrint('[FCM DIAGNOSTICS] Customer push failed for order ${order.id} (reports)');
-                  }
                 }
+
+                await widget.firestore.updateOrderStatus(
+                  orderId: order.id,
+                  status: status,
+                  extra: extra,
+                );
 
                 if (context.mounted) Navigator.pop(context);
               },

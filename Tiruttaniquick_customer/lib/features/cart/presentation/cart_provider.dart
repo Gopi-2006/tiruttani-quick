@@ -45,6 +45,18 @@ class CartProvider extends ChangeNotifier {
   int get itemCount => _items.values.fold(0, (total, item) => total + item.quantity);
   ProductModel? getProduct(String productId) => _productsCache[productId];
 
+  /// Returns current quantity in cart for a given product and optional variant
+  int getItemQuantity(String productId, [String? variantId]) {
+    final key = (variantId != null && variantId.isNotEmpty) ? '${productId}_$variantId' : productId;
+    return _items[key]?.quantity ?? 0;
+  }
+
+  /// Returns the specific CartItemModel for a given product and optional variant
+  CartItemModel? getCartItem(String productId, [String? variantId]) {
+    final key = (variantId != null && variantId.isNotEmpty) ? '${productId}_$variantId' : productId;
+    return _items[key];
+  }
+
   String get couponCode => _couponCode;
   double get couponDiscount => _couponDiscount;
 
@@ -443,7 +455,61 @@ class CartProvider extends ChangeNotifier {
     }
   }
 
+  /// Adds multiple items from a past order to the cart (validating stock/availability).
+  /// Returns the count of items successfully added.
+  Future<int> addBatch(List<OrderItemModel> orderItems) async {
+    final userId = _userId;
+    if (userId == null) return 0;
+
+    int addedCount = 0;
+    for (final orderItem in orderItems) {
+      // Lookup product from cache or fetch from repository
+      ProductModel? product = _productsCache[orderItem.productId];
+      if (product == null) {
+        try {
+          product = await ProductRepository.instance.loadProductDetails(orderItem.productId);
+        } catch (_) {
+          product = null;
+        }
+      }
+      if (product == null || !product.isActive) continue;
+
+      ProductVariantModel? variant;
+      if (orderItem.variantId.isNotEmpty && product.variantsEnabled) {
+        final matches = product.variants.where((v) => v.id == orderItem.variantId);
+        if (matches.isNotEmpty) {
+          variant = matches.first;
+        }
+      }
+
+      final stock = variant != null ? variant.stockQuantity : product.stockQuantity;
+      if (stock <= 0) continue;
+
+      final desiredQuantity = orderItem.quantity > 0 ? orderItem.quantity : 1;
+      final currentQuantity = getItemQuantity(product.id, variant?.id);
+      final needed = desiredQuantity - currentQuantity;
+
+      if (currentQuantity == 0) {
+        await add(product, variant: variant);
+        addedCount++;
+        // Add remaining needed quantities
+        for (int i = 1; i < desiredQuantity && (currentQuantity + i) < stock; i++) {
+          final item = getCartItem(product.id, variant?.id);
+          if (item != null) await increment(item);
+        }
+      } else if (needed > 0) {
+        for (int i = 0; i < needed && (currentQuantity + i) < stock; i++) {
+          final item = getCartItem(product.id, variant?.id);
+          if (item != null) await increment(item);
+        }
+        addedCount++;
+      }
+    }
+    return addedCount;
+  }
+
   Future<void> clear() async {
+
     final userId = _userId;
     if (userId == null) return;
 

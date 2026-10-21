@@ -7,6 +7,7 @@ import '../../../core/theme/text_styles.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/custom_textfield.dart';
 import '../../../core/utils/validators.dart';
+import '../../../services/current_user_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,7 +23,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
 
   bool _loading = false;
-  bool _acceptedPrivacyPolicy = false;
+  late bool _acceptedPrivacyPolicy;
+
+  @override
+  void initState() {
+    super.initState();
+    _acceptedPrivacyPolicy = currentUserProvider.privacyPolicyAccepted;
+  }
 
   @override
   void dispose() {
@@ -82,9 +89,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         onChanged: _loading
                             ? null
                             : (val) {
+                                final accepted = val ?? false;
                                 setState(() {
-                                  _acceptedPrivacyPolicy = val ?? false;
+                                  _acceptedPrivacyPolicy = accepted;
                                 });
+                                currentUserProvider.setPrivacyPolicyAccepted(accepted);
                               },
                       ),
                       Expanded(
